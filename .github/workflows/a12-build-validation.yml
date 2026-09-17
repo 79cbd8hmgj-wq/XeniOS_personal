@@ -1,4 +1,4 @@
-name: A12 iOS Build Validation
+name: A12 iOS 14.7 Build Validation
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-ios-arm64:
-    name: Build iOS ARM64 IPA
+    name: Build iOS 14.7 ARM64 IPA
     runs-on: macos-15
     permissions:
       contents: read
@@ -42,19 +42,20 @@ jobs:
       - name: Select Xcode 26.3
         run: sudo xcode-select -s /Applications/Xcode_26.3.app
 
-      - name: Build ad-hoc iOS IPA
+      - name: Build ad-hoc iOS 14.7 IPA
         shell: bash
         run: |
           set -euo pipefail
           ./tools/build_apple_release.sh \
             --channel preview \
             --stage alpha \
+            --ios-min 14.7 \
             --random-ios-bundle-id \
             --skip-macos-arm64 \
             --skip-macos-x86_64
           test -f scratch/artifacts/xenios_ios_iphone_ipad.ipa
 
-      - name: Verify iOS ARM64 IPA
+      - name: Verify iOS 14.7 ARM64 IPA
         shell: bash
         run: |
           set -euo pipefail
@@ -68,14 +69,24 @@ jobs:
           test -n "$executable_name"
           main_exe="$app_bundle/$executable_name"
           test -f "$main_exe"
+
+          minimum_os="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$app_bundle/Info.plist")"
+          echo "Info.plist MinimumOSVersion: $minimum_os"
+          test "$minimum_os" = "14.7"
+
           file "$main_exe"
           file "$main_exe" | grep -q "arm64"
+
+          xcrun vtool -show-build "$main_exe" | tee scratch/a12-ios-verify/vtool.txt
+          grep -Eq 'platform[[:space:]]+IOS' scratch/a12-ios-verify/vtool.txt
+          grep -Eq 'minos[[:space:]]+14\.7([[:space:]]|$)' scratch/a12-ios-verify/vtool.txt
+
           codesign -dv --verbose=2 "$app_bundle"
 
       - name: Upload validation IPA
         uses: actions/upload-artifact@v4
         with:
-          name: a12-ios-validation-ipa
+          name: a12-ios14_7-validation-ipa
           path: scratch/artifacts/xenios_ios_iphone_ipad.ipa
           if-no-files-found: error
           retention-days: 3
