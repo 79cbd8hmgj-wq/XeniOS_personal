@@ -15,11 +15,14 @@
 #include <cstdint>
 #include <string>
 
+#include "xenia/ui/metal/metal_telemetry.h"
+
 namespace xe {
 namespace gpu {
 namespace metal {
 
 using MetalTelemetryNameCallback = const char* (*)(size_t);
+using MetalTelemetryAccumulator = xe::ui::metal::MetalTelemetryAccumulator;
 
 const char* MetalRenderEncoderEndReasonName(size_t reason);
 const char* MetalTransferRequestSourceName(size_t source);

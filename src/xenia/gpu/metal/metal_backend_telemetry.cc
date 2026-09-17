@@ -15,6 +15,41 @@ namespace xe {
 namespace gpu {
 namespace metal {
 
+namespace {
+
+constexpr bool MetalTelemetryAccumulatorCompileTimeTest() {
+  MetalTelemetryAccumulator accumulator;
+  if (!accumulator.empty() || accumulator.count != 0 ||
+      accumulator.total != 0 || accumulator.min != 0 || accumulator.max != 0) {
+    return false;
+  }
+
+  accumulator.Add(7);
+  accumulator.Add(3);
+  accumulator.Add(12);
+  if (accumulator.empty() || accumulator.count != 3 ||
+      accumulator.total != 22 || accumulator.min != 3 ||
+      accumulator.max != 12) {
+    return false;
+  }
+
+  accumulator.Reset();
+  accumulator.Add(0);
+  if (accumulator.empty() || accumulator.count != 1 || accumulator.total != 0 ||
+      accumulator.min != 0 || accumulator.max != 0) {
+    return false;
+  }
+
+  accumulator.Reset();
+  return accumulator.empty() && accumulator.count == 0 &&
+         accumulator.total == 0 && accumulator.min == 0 && accumulator.max == 0;
+}
+
+static_assert(MetalTelemetryAccumulatorCompileTimeTest(),
+              "Metal telemetry accumulator invariants must hold");
+
+}  // namespace
+
 const char* MetalRenderEncoderEndReasonName(size_t reason) {
   switch (reason) {
     case 0:

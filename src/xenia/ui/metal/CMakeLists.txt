@@ -9,6 +9,7 @@ add_library(xenia-ui-metal STATIC
   metal_presenter.mm
   metal_provider.cc
   metal_provider.h
+  metal_telemetry.h
 )
 target_link_libraries(xenia-ui-metal PUBLIC
   xenia-base
