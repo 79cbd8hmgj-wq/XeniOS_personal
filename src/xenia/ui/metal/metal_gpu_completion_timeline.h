@@ -18,6 +18,7 @@
 
 #include "third_party/metal-cpp/Metal/Metal.hpp"
 #include "xenia/ui/gpu_completion_timeline.h"
+#include "xenia/ui/metal/metal_telemetry.h"
 
 namespace xe {
 namespace ui {
@@ -49,11 +50,17 @@ class MetalGPUCompletionTimeline : public GPUCompletionTimeline {
  private:
   explicit MetalGPUCompletionTimeline(MTL::SharedEvent* shared_event);
 
+  void RecordAwaitSubmissionWait(uint64_t wait_us);
+  void MaybeDumpTelemetry(bool force);
+
   MTL::SharedEvent* shared_event_ = nullptr;
 
   std::atomic<uint64_t> completed_fallback_{0};
   std::mutex fallback_mutex_;
   std::condition_variable fallback_cv_;
+
+  std::mutex telemetry_mutex_;
+  MetalTelemetryAccumulator await_submission_wait_us_;
 };
 
 }  // namespace metal

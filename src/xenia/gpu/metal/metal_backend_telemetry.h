@@ -15,46 +15,14 @@
 #include <cstdint>
 #include <string>
 
+#include "xenia/ui/metal/metal_telemetry.h"
+
 namespace xe {
 namespace gpu {
 namespace metal {
 
 using MetalTelemetryNameCallback = const char* (*)(size_t);
-
-// Allocation-free aggregation for timing and count samples collected by the
-// Metal backend. Callers supply already-measured values so collection does not
-// impose a clock choice or additional timing calls on hot paths.
-struct MetalTelemetryAccumulator {
-  uint64_t count = 0;
-  uint64_t total = 0;
-  uint64_t min = 0;
-  uint64_t max = 0;
-
-  constexpr bool empty() const noexcept { return count == 0; }
-
-  constexpr void Add(uint64_t value) noexcept {
-    if (count == 0) {
-      min = value;
-      max = value;
-    } else {
-      if (value < min) {
-        min = value;
-      }
-      if (value > max) {
-        max = value;
-      }
-    }
-    ++count;
-    total += value;
-  }
-
-  constexpr void Reset() noexcept {
-    count = 0;
-    total = 0;
-    min = 0;
-    max = 0;
-  }
-};
+using MetalTelemetryAccumulator = xe::ui::metal::MetalTelemetryAccumulator;
 
 const char* MetalRenderEncoderEndReasonName(size_t reason);
 const char* MetalTransferRequestSourceName(size_t source);

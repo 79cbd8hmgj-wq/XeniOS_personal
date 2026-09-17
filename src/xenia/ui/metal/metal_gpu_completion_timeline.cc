@@ -9,10 +9,22 @@
 
 #include "xenia/ui/metal/metal_gpu_completion_timeline.h"
 
+#include <chrono>
 #include <limits>
 
 #include "third_party/metal-cpp/Foundation/NSString.hpp"
+#include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
+
+DEFINE_bool(metal_gpu_completion_telemetry, false,
+            "Log timing summaries for CPU waits on the Metal GPU completion "
+            "timeline.",
+            "Metal");
+DEFINE_int32(
+    metal_gpu_completion_telemetry_interval, 120,
+    "Number of blocking Metal GPU completion waits between timing summaries. "
+    "Set to 0 to log only on shutdown.",
+    "Metal");
 
 namespace xe {
 namespace ui {
@@ -58,6 +70,7 @@ MetalGPUCompletionTimeline::~MetalGPUCompletionTimeline() {
     shared_event_->release();
     shared_event_ = nullptr;
   }
+  MaybeDumpTelemetry(true);
 }
 
 bool MetalGPUCompletionTimeline::SignalAndAdvance(
@@ -102,16 +115,64 @@ void MetalGPUCompletionTimeline::UpdateCompletedSubmission() {
 
 void MetalGPUCompletionTimeline::AwaitSubmissionImpl(
     uint64_t awaited_submission) {
+  const bool collect_telemetry = ::cvars::metal_gpu_completion_telemetry;
+  std::chrono::steady_clock::time_point wait_start;
+  if (collect_telemetry) {
+    wait_start = std::chrono::steady_clock::now();
+  }
+
   if (shared_event_) {
     shared_event_->waitUntilSignaledValue(awaited_submission,
                                           std::numeric_limits<uint64_t>::max());
+  } else {
+    std::unique_lock<std::mutex> lock(fallback_mutex_);
+    fallback_cv_.wait(lock, [this, awaited_submission] {
+      return completed_fallback_.load(std::memory_order_acquire) >=
+             awaited_submission;
+    });
+  }
+
+  if (collect_telemetry) {
+    const auto wait_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                             std::chrono::steady_clock::now() - wait_start)
+                             .count();
+    RecordAwaitSubmissionWait(
+        wait_us > 0 ? static_cast<uint64_t>(wait_us) : uint64_t(0));
+    MaybeDumpTelemetry(false);
+  }
+}
+
+void MetalGPUCompletionTimeline::RecordAwaitSubmissionWait(uint64_t wait_us) {
+  std::lock_guard<std::mutex> lock(telemetry_mutex_);
+  await_submission_wait_us_.Add(wait_us);
+}
+
+void MetalGPUCompletionTimeline::MaybeDumpTelemetry(bool force) {
+  if (!::cvars::metal_gpu_completion_telemetry) {
     return;
   }
-  std::unique_lock<std::mutex> lock(fallback_mutex_);
-  fallback_cv_.wait(lock, [this, awaited_submission] {
-    return completed_fallback_.load(std::memory_order_acquire) >=
-           awaited_submission;
-  });
+
+  MetalTelemetryAccumulator snapshot;
+  {
+    std::lock_guard<std::mutex> lock(telemetry_mutex_);
+    const int32_t interval_config =
+        ::cvars::metal_gpu_completion_telemetry_interval;
+    const uint64_t interval =
+        interval_config > 0 ? static_cast<uint64_t>(interval_config) : 0;
+    if (await_submission_wait_us_.empty() ||
+        (!force && (!interval || await_submission_wait_us_.count < interval))) {
+      return;
+    }
+    snapshot = await_submission_wait_us_;
+    await_submission_wait_us_.Reset();
+  }
+
+  XELOGI(
+      "Metal GPU completion waits: count={} total_us={} avg_us={} min_us={} "
+      "max_us={}",
+      snapshot.count, snapshot.total,
+      snapshot.count ? snapshot.total / snapshot.count : uint64_t(0),
+      snapshot.min, snapshot.max);
 }
 
 }  // namespace metal
