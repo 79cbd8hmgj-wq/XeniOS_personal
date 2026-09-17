@@ -136,8 +136,8 @@ void MetalGPUCompletionTimeline::AwaitSubmissionImpl(
     const auto wait_us = std::chrono::duration_cast<std::chrono::microseconds>(
                              std::chrono::steady_clock::now() - wait_start)
                              .count();
-    RecordAwaitSubmissionWait(
-        wait_us > 0 ? static_cast<uint64_t>(wait_us) : uint64_t(0));
+    RecordAwaitSubmissionWait(wait_us > 0 ? static_cast<uint64_t>(wait_us)
+                                          : uint64_t(0));
     MaybeDumpTelemetry(false);
   }
 }
