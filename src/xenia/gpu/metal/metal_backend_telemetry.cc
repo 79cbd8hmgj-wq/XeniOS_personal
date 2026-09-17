@@ -35,8 +35,8 @@ constexpr bool MetalTelemetryAccumulatorCompileTimeTest() {
 
   accumulator.Reset();
   accumulator.Add(0);
-  if (accumulator.empty() || accumulator.count != 1 ||
-      accumulator.total != 0 || accumulator.min != 0 || accumulator.max != 0) {
+  if (accumulator.empty() || accumulator.count != 1 || accumulator.total != 0 ||
+      accumulator.min != 0 || accumulator.max != 0) {
     return false;
   }
 
