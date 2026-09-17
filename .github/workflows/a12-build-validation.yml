@@ -9,7 +9,7 @@ on:
 jobs:
   build-ios-arm64:
     name: Build iOS 14.7 ARM64 IPA
-    runs-on: macos-15
+    runs-on: macos-14
     permissions:
       contents: read
     steps:
@@ -39,8 +39,70 @@ jobs:
             external/SPIRV-Headers external/SPIRV-Tools
           ./xenia-build.py fetchdata
 
-      - name: Select Xcode 26.3
-        run: sudo xcode-select -s /Applications/Xcode_26.3.app
+      - name: Select Xcode 15.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d /Applications/Xcode_15.4.app
+          sudo xcode-select -s /Applications/Xcode_15.4.app
+          xcodebuild -version
+          echo "iPhoneOS SDK: $(xcrun --sdk iphoneos --show-sdk-version)"
+          test "$(xcodebuild -version | awk 'NR == 1 { print $2 }')" = "15.4"
+
+      - name: Prepare Xcode 15 compatible app icon
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Xcode 15.4 predates Icon Composer .icon bundles. Build a minimal
+          # legacy catalog containing only the primary AppIcon so it can coexist
+          # with XeniOSAssets.xcassets without duplicate SettingsLink assets.
+          compat_catalog="scratch/A12CompatAppIcon.xcassets"
+          rm -rf "$compat_catalog"
+          mkdir -p "$compat_catalog"
+          cp assets/apple/AppIcon.xcassets/Contents.json "$compat_catalog/Contents.json"
+          cp -R assets/apple/AppIcon.xcassets/AppIcon.appiconset "$compat_catalog/AppIcon.appiconset"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/xenia/app/CMakeLists.txt")
+          text = path.read_text()
+
+          replacements = {
+              'set(_xe_ios_app_icon "${PROJECT_SOURCE_DIR}/assets/apple/AppIcon.icon")':
+                  'set(_xe_ios_app_icon "${PROJECT_SOURCE_DIR}/scratch/A12CompatAppIcon.xcassets")',
+              'XCODE_LAST_KNOWN_FILE_TYPE "folder.iconcomposer.icon"':
+                  'XCODE_LAST_KNOWN_FILE_TYPE "folder.assetcatalog"',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"expected compatibility patch anchor missing: {old}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Preflight iOS 14.7 deployment target
+        shell: bash
+        env:
+          CMAKE_OSX_DEPLOYMENT_TARGET: "14.7"
+        run: |
+          set -euo pipefail
+          rm -rf build-ios-xcode
+          ./xb devenv --target-os=ios --config=release --no-open
+
+          settings="$(xcodebuild \
+            -project build-ios-xcode/xenia.xcodeproj \
+            -scheme xenia-app \
+            -configuration Release \
+            -destination generic/platform=iOS \
+            -showBuildSettings)"
+          printf '%s\n' "$settings" > scratch/a12-build-settings.txt
+          deployment_target="$(printf '%s\n' "$settings" | \
+            awk -F ' = ' '/^[[:space:]]*IPHONEOS_DEPLOYMENT_TARGET = / { print $2; exit }')"
+          echo "Resolved IPHONEOS_DEPLOYMENT_TARGET: $deployment_target"
+          test "$deployment_target" = "14.7"
 
       - name: Build ad-hoc iOS 14.7 IPA
         shell: bash
@@ -77,9 +139,38 @@ jobs:
           file "$main_exe"
           file "$main_exe" | grep -q "arm64"
 
-          xcrun vtool -show-build "$main_exe" | tee scratch/a12-ios-verify/vtool.txt
-          grep -Eq 'platform[[:space:]]+IOS' scratch/a12-ios-verify/vtool.txt
-          grep -Eq 'minos[[:space:]]+14\.7([[:space:]]|$)' scratch/a12-ios-verify/vtool.txt
+          verify_macho_minos() {
+            local binary="$1"
+            local report actual
+            report="$(xcrun vtool -show-build "$binary")"
+            printf '%s\n' "$report"
+            printf '%s\n' "$report" | grep -Eq 'platform[[:space:]]+IOS'
+            actual="$(printf '%s\n' "$report" | awk '/minos[[:space:]]+/ { print $2; exit }')"
+            test -n "$actual"
+            python3 - "$binary" "$actual" "14.7" <<'PY'
+          import sys
+
+          binary, actual, maximum = sys.argv[1:]
+
+          def version_tuple(value):
+              parts = value.split(".")
+              return tuple(int(part) for part in parts) + (0,) * (3 - len(parts))
+
+          if version_tuple(actual) > version_tuple(maximum):
+              raise SystemExit(
+                  f"{binary}: deployment target {actual} exceeds iOS {maximum}")
+          print(f"{binary}: minOS {actual} <= {maximum}")
+          PY
+          }
+
+          verify_macho_minos "$main_exe"
+          if [ -d "$app_bundle/Frameworks" ]; then
+            while IFS= read -r -d '' candidate; do
+              if file "$candidate" | grep -q 'Mach-O.*arm64'; then
+                verify_macho_minos "$candidate"
+              fi
+            done < <(find "$app_bundle/Frameworks" -type f -print0)
+          fi
 
           codesign -dv --verbose=2 "$app_bundle"
 
