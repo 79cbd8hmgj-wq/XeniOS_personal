@@ -35,12 +35,24 @@
   _hintLabel.backgroundColor = [UIColor clearColor];
   [self addSubview:_hintLabel];
 
-  UIButtonConfiguration* done_config = [UIButtonConfiguration filledButtonConfiguration];
-  done_config.title = @"Done";
-  done_config.baseBackgroundColor = [XeniaTheme accent];
-  done_config.baseForegroundColor = [XeniaTheme accentFg];
-  done_config.cornerStyle = UIButtonConfigurationCornerStyleLarge;
-  _doneButton = [[UIButton buttonWithConfiguration:done_config primaryAction:nil] retain];
+  if (@available(iOS 15.0, *)) {
+    UIButtonConfiguration* done_config =
+        [UIButtonConfiguration filledButtonConfiguration];
+    done_config.title = @"Done";
+    done_config.baseBackgroundColor = [XeniaTheme accent];
+    done_config.baseForegroundColor = [XeniaTheme accentFg];
+    done_config.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+    _doneButton =
+        [[UIButton buttonWithConfiguration:done_config primaryAction:nil] retain];
+  } else {
+    _doneButton = [[UIButton buttonWithType:UIButtonTypeSystem] retain];
+    [_doneButton setTitle:@"Done" forState:UIControlStateNormal];
+    [_doneButton setTitleColor:[XeniaTheme accentFg]
+                      forState:UIControlStateNormal];
+    _doneButton.backgroundColor = [XeniaTheme accent];
+    _doneButton.contentEdgeInsets = UIEdgeInsetsMake(10, 16, 10, 16);
+    _doneButton.layer.cornerRadius = 12.0;
+  }
   [_doneButton addTarget:self
                   action:@selector(donePressed:)
         forControlEvents:UIControlEventTouchUpInside];
