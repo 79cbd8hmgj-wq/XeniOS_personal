@@ -90,6 +90,9 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf build-ios-xcode
+          # iOS configuration requires the native host shader compiler first.
+          # Match the ordering used by tools/build_apple_release.sh.
+          ./xb build --config=release --target=xenia-shader-cc
           ./xb devenv --target-os=ios --config=release --no-open
 
           settings="$(xcodebuild \
