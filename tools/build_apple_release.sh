@@ -1057,12 +1057,25 @@ if [ "$build_ios" -eq 1 ]; then
   echo "== iOS arm64 (Xcode-built, ad-hoc-signed ipa) =="
 
   ./xb build --config="$config" --target=xenia-shader-cc
-  ./xb devenv --target-os=ios --config="$config" --no-open
+  CMAKE_OSX_DEPLOYMENT_TARGET="$ios_min" \
+    ./xb devenv --target-os=ios --config="$config" --no-open
+
+  resolved_ios_min="$(xcodebuild \
+    -project build-ios-xcode/xenia.xcodeproj \
+    -scheme xenia-app \
+    -configuration "$buildcfg" \
+    -destination generic/platform=iOS \
+    -showBuildSettings | \
+    awk -F ' = ' '/^[[:space:]]*IPHONEOS_DEPLOYMENT_TARGET = / { print $2; exit }')"
+  [ "$resolved_ios_min" = "$ios_min" ] || \
+    die "resolved iOS deployment target '$resolved_ios_min' does not match --ios-min '$ios_min'"
+
   xcodebuild \
     -project build-ios-xcode/xenia.xcodeproj \
     -scheme xenia-app \
     -configuration "$buildcfg" \
     -destination generic/platform=iOS \
+    IPHONEOS_DEPLOYMENT_TARGET="$ios_min" \
     CODE_SIGNING_ALLOWED=NO \
     build
 
