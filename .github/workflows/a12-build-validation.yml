@@ -6,6 +6,10 @@ on:
       - "a12-performance-build-validation"
   workflow_dispatch:
 
+concurrency:
+  group: a12-ios14_7-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-ios-arm64:
     name: Build iOS 14.7 ARM64 IPA
@@ -137,6 +141,12 @@ jobs:
           if apple_guard not in memory_posix:
               failures.append("memory_posix.cc Apple at_quick_exit guard is missing")
 
+          logging = Path("src/xenia/base/logging.cc").read_text()
+          if "std::quick_exit(EXIT_FAILURE)" in logging and "#elif XE_PLATFORM_APPLE" not in logging:
+              failures.append("logging.cc still calls std::quick_exit on Apple/Xcode 15.4")
+          if "std::_Exit(EXIT_FAILURE)" not in logging:
+              failures.append("logging.cc is missing the Apple immediate-exit fallback")
+
           dxc = Path("third_party/DirectXShaderCompiler/projects/dxilconv/lib/ShaderBinary/ShaderBinary.cpp").read_text()
           if re.search(r"(?<![:\w])(?:min|max)\s*\(", dxc):
               failures.append("DXC ShaderBinary.cpp still contains unqualified min/max calls")
@@ -160,7 +170,10 @@ jobs:
 
           unsupported_libcxx = (
               "std::expected", "std::print(", "std::println(", "std::mdspan",
-              "std::generator", "std::move_only_function", "std::stacktrace"
+              "std::generator", "std::move_only_function", "std::stacktrace",
+              "std::ranges::to", "std::views::zip", "std::views::chunk",
+              "std::views::slide", "std::views::stride", "std::forward_like",
+              "std::to_underlying", "std::byteswap"
           )
           source_suffixes = {".cc", ".cpp", ".cxx", ".h", ".hpp", ".mm"}
           for path in Path("src").rglob("*"):
@@ -170,6 +183,51 @@ jobs:
               for token in unsupported_libcxx:
                   if token in text:
                       failures.append(f"{path}: Xcode 15.4/C++20 audit found {token}")
+
+          ios_runtime_apis = {
+              "UIButtonConfiguration": (15, 0),
+              "UISheetPresentationController": (15, 0),
+              "UIContentUnavailableConfiguration": (17, 0),
+              "UIHostingConfiguration": (16, 0),
+              "UIPasteControl": (16, 0),
+              "UICalendarView": (16, 0),
+              "UIEditMenuInteraction": (16, 0),
+              "UIFindInteraction": (16, 0),
+              "UIUpdateLink": (18, 0),
+          }
+
+          def guarded_by_available(lines, index, minimum):
+              depth = 0
+              active_guards = []
+              for raw_line in lines[: index + 1]:
+                  line = raw_line.split("//", 1)[0]
+                  match = re.search(
+                      r"@available\s*\(\s*iOS\s+(\d+)\.(\d+)", line)
+                  opens = line.count("{")
+                  closes = line.count("}")
+                  if match and "{" in line:
+                      version = (int(match.group(1)), int(match.group(2)))
+                      active_guards.append((depth, version))
+                  depth += opens - closes
+                  active_guards = [
+                      guard for guard in active_guards if depth > guard[0]
+                  ]
+              return any(version <= minimum for _, version in active_guards)
+
+          for path in Path("src/xenia/ui/ios").rglob("*.mm"):
+              lines = path.read_text(errors="ignore").splitlines()
+              for line_index, line in enumerate(lines):
+                  code = line.split("//", 1)[0]
+                  for token, minimum in ios_runtime_apis.items():
+                      if token not in code:
+                          continue
+                      if token == "UIUpdateLink":
+                          failures.append(
+                              f"{path}:{line_index + 1}: {token} is newer than the Xcode 15.4 SDK")
+                          continue
+                      if not guarded_by_available(lines, line_index, minimum):
+                          failures.append(
+                              f"{path}:{line_index + 1}: {token} is not inside an iOS {minimum[0]}.{minimum[1]} availability guard")
 
           if failures:
               raise SystemExit("\n".join(f"COMPAT AUDIT: {failure}" for failure in failures))
@@ -226,6 +284,25 @@ jobs:
             awk -F ' = ' '/^[[:space:]]*IPHONEOS_DEPLOYMENT_TARGET = / { print $2; exit }')"
           echo "Resolved IPHONEOS_DEPLOYMENT_TARGET: $deployment_target"
           test "$deployment_target" = "14.7"
+
+      - name: Compile high-risk iOS targets first
+        shell: bash
+        env:
+          CMAKE_OSX_DEPLOYMENT_TARGET: "14.7"
+        run: |
+          set -euo pipefail
+          for target in xenia-base xenia-ui-ios xenia-gpu-metal; do
+            echo "== compatibility smoke target: $target =="
+            xcodebuild \
+              -project build-ios-xcode/xenia.xcodeproj \
+              -target "$target" \
+              -configuration Release \
+              -sdk iphoneos \
+              IPHONEOS_DEPLOYMENT_TARGET=14.7 \
+              CODE_SIGNING_ALLOWED=NO \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              build
+          done
 
       - name: Build ad-hoc iOS 14.7 IPA
         shell: bash
