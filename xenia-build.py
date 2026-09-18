@@ -666,6 +666,14 @@ def run_cmake_configure(cc=None, generator=None, build_tests=False,
             "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
             "-DXENIA_ENABLE_IOS_MOLTENVK=ON",
         ]
+        # CMake cache variables are not populated from same-named environment
+        # variables automatically. Propagate the workflow/release override
+        # explicitly so lower iOS deployment targets replace the repo default.
+        osx_deployment_target = os.environ.get("CMAKE_OSX_DEPLOYMENT_TARGET")
+        if osx_deployment_target:
+            args += [
+                f"-DCMAKE_OSX_DEPLOYMENT_TARGET={osx_deployment_target}"
+            ]
     elif sys.platform == "darwin" and target_arch is not None:
         # Apple clang is universal; CMAKE_OSX_ARCHITECTURES drives -arch.
         # We don't set CMAKE_SYSTEM_PROCESSOR here — without
