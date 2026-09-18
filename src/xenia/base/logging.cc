@@ -545,10 +545,15 @@ void FatalError(const std::string_view str) {
 #if XE_PLATFORM_ANDROID
   // Throw an error that can be reported to the developers via the store.
   std::abort();
+#elif XE_PLATFORM_APPLE
+  // Xcode 15.4's Apple libc++ exposes quick_exit as an unresolved using
+  // declaration. Apple builds do not register at_quick_exit cleanup handlers,
+  // so terminate immediately without running static destructors.
+  std::_Exit(EXIT_FAILURE);
 #else
-  // skip static destructors so they can't race with worker threads still
-  // running and corrupt the heap, at_quick_exit handlers will take care
-  // of necessary cleanup (e.g. /dev/shm/xenia* files on linux )
+  // Skip static destructors so they can't race with worker threads still
+  // running and corrupt the heap. at_quick_exit handlers perform required
+  // cleanup on platforms that support them (for example /dev/shm on Linux).
   std::quick_exit(EXIT_FAILURE);
 #endif  // XE_PLATFORM_ANDROID
 }
