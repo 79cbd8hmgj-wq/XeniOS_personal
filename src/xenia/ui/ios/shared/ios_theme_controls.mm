@@ -212,16 +212,29 @@ UIButton* xe_make_settings_footer_button(NSString* asset_name, NSString* fallbac
   button.tag = tag;
   button.backgroundColor = [UIColor clearColor];
   button.tintColor = [XeniaTheme textPrimary];
-  UIButtonConfiguration* configuration = [UIButtonConfiguration plainButtonConfiguration];
-  configuration.image = image;
-  configuration.title = nil;
-  configuration.imagePadding = 0.0;
-  configuration.contentInsets = NSDirectionalEdgeInsetsMake(6.0, 8.0, 6.0, 8.0);
-  configuration.baseForegroundColor = [XeniaTheme textPrimary];
-  configuration.preferredSymbolConfigurationForImage =
-      [UIImageSymbolConfiguration configurationWithPointSize:20.0
-                                                      weight:UIImageSymbolWeightSemibold];
-  button.configuration = configuration;
+  if (@available(iOS 15.0, *)) {
+    UIButtonConfiguration* configuration =
+        [UIButtonConfiguration plainButtonConfiguration];
+    configuration.image = image;
+    configuration.title = nil;
+    configuration.imagePadding = 0.0;
+    configuration.contentInsets =
+        NSDirectionalEdgeInsetsMake(6.0, 8.0, 6.0, 8.0);
+    configuration.baseForegroundColor = [XeniaTheme textPrimary];
+    configuration.preferredSymbolConfigurationForImage =
+        [UIImageSymbolConfiguration configurationWithPointSize:20.0
+                                                        weight:UIImageSymbolWeightSemibold];
+    button.configuration = configuration;
+  } else {
+    [button setImage:image forState:UIControlStateNormal];
+    button.contentEdgeInsets = UIEdgeInsetsMake(6.0, 8.0, 6.0, 8.0);
+    button.tintColor = [XeniaTheme textPrimary];
+    [button setPreferredSymbolConfiguration:
+                [UIImageSymbolConfiguration
+                    configurationWithPointSize:20.0
+                                        weight:UIImageSymbolWeightSemibold]
+                          forImageInState:UIControlStateNormal];
+  }
   button.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption2];
   button.titleLabel.adjustsFontForContentSizeCategory = YES;
   button.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
