@@ -18,6 +18,31 @@
 #import "xenia/ui/ios/shared/ios_theme.h"
 #import "xenia/ui/ios/shared/ios_view_helpers.h"
 
+namespace {
+
+UIButton* NewRetainedPlainIconButton(UIImage* image, UIColor* color,
+                                     CGFloat vertical_inset,
+                                     CGFloat horizontal_inset) {
+  if (@available(iOS 15.0, *)) {
+    UIButtonConfiguration* config =
+        [UIButtonConfiguration plainButtonConfiguration];
+    config.image = image;
+    config.baseForegroundColor = color;
+    config.contentInsets = NSDirectionalEdgeInsetsMake(
+        vertical_inset, horizontal_inset, vertical_inset, horizontal_inset);
+    return [[UIButton buttonWithConfiguration:config primaryAction:nil] retain];
+  }
+
+  UIButton* button = [[UIButton buttonWithType:UIButtonTypeSystem] retain];
+  [button setImage:image forState:UIControlStateNormal];
+  button.tintColor = color;
+  button.contentEdgeInsets = UIEdgeInsetsMake(
+      vertical_inset, horizontal_inset, vertical_inset, horizontal_inset);
+  return button;
+}
+
+}  // namespace
+
 @implementation XeniaIOSLauncherGameSnapshot
 
 - (void)dealloc {
@@ -109,15 +134,13 @@
   _titleLabel.adjustsFontForContentSizeCategory = YES;
   [self addSubview:_titleLabel];
 
-  UIButtonConfiguration* settingsCfg = [UIButtonConfiguration plainButtonConfiguration];
-  settingsCfg.image =
+  UIImage* settings_image =
       [UIImage systemImageNamed:@"gearshape"
               withConfiguration:[UIImageSymbolConfiguration
                                     configurationWithPointSize:20
                                                         weight:UIImageSymbolWeightRegular]];
-  settingsCfg.baseForegroundColor = [XeniaTheme textMuted];
-  settingsCfg.contentInsets = NSDirectionalEdgeInsetsMake(8, 8, 8, 8);
-  _settingsButton = [[UIButton buttonWithConfiguration:settingsCfg primaryAction:nil] retain];
+  _settingsButton =
+      NewRetainedPlainIconButton(settings_image, [XeniaTheme textMuted], 8, 8);
   _settingsButton.translatesAutoresizingMaskIntoConstraints = NO;
   [_settingsButton addTarget:self
                       action:@selector(settingsTapped:)
@@ -126,15 +149,13 @@
                        UIAccessibilityTraitButton);
   [self addSubview:_settingsButton];
 
-  UIButtonConfiguration* profileCfg = [UIButtonConfiguration plainButtonConfiguration];
-  profileCfg.image =
+  UIImage* profile_image =
       [UIImage systemImageNamed:@"person.circle"
               withConfiguration:[UIImageSymbolConfiguration
                                     configurationWithPointSize:20
                                                         weight:UIImageSymbolWeightRegular]];
-  profileCfg.baseForegroundColor = [XeniaTheme textMuted];
-  profileCfg.contentInsets = NSDirectionalEdgeInsetsMake(8, 8, 8, 8);
-  _profileButton = [[UIButton buttonWithConfiguration:profileCfg primaryAction:nil] retain];
+  _profileButton =
+      NewRetainedPlainIconButton(profile_image, [XeniaTheme textMuted], 8, 8);
   _profileButton.translatesAutoresizingMaskIntoConstraints = NO;
   [_profileButton addTarget:self
                      action:@selector(profileTapped:)
@@ -251,15 +272,13 @@
   _libraryLabel.accessibilityTraits = UIAccessibilityTraitHeader;
   [libraryRow addSubview:_libraryLabel];
 
-  UIButtonConfiguration* convertCfg = [UIButtonConfiguration plainButtonConfiguration];
-  convertCfg.image =
+  UIImage* convert_image =
       [UIImage systemImageNamed:@"opticaldisc"
               withConfiguration:[UIImageSymbolConfiguration
                                     configurationWithPointSize:20
                                                         weight:UIImageSymbolWeightMedium]];
-  convertCfg.baseForegroundColor = [XeniaTheme accent];
-  convertCfg.contentInsets = NSDirectionalEdgeInsetsMake(6, 6, 6, 6);
-  _convertLibraryButton = [[UIButton buttonWithConfiguration:convertCfg primaryAction:nil] retain];
+  _convertLibraryButton =
+      NewRetainedPlainIconButton(convert_image, [XeniaTheme accent], 6, 6);
   _convertLibraryButton.translatesAutoresizingMaskIntoConstraints = NO;
   _convertLibraryButton.hidden = YES;
   [_convertLibraryButton addTarget:self
@@ -268,15 +287,13 @@
   XEApplyAccessibility(_convertLibraryButton, @"Convert library to ZAR", nil,
                        @"Converts non-ZAR games in the library.", UIAccessibilityTraitButton);
 
-  UIButtonConfiguration* importCfg = [UIButtonConfiguration plainButtonConfiguration];
-  importCfg.image =
+  UIImage* import_image =
       [UIImage systemImageNamed:@"plus"
               withConfiguration:[UIImageSymbolConfiguration
                                     configurationWithPointSize:20
                                                         weight:UIImageSymbolWeightMedium]];
-  importCfg.baseForegroundColor = [XeniaTheme accent];
-  importCfg.contentInsets = NSDirectionalEdgeInsetsMake(6, 6, 6, 6);
-  _openGameButton = [[UIButton buttonWithConfiguration:importCfg primaryAction:nil] retain];
+  _openGameButton =
+      NewRetainedPlainIconButton(import_image, [XeniaTheme accent], 6, 6);
   _openGameButton.translatesAutoresizingMaskIntoConstraints = NO;
   [_openGameButton addTarget:self
                       action:@selector(importTapped:)
