@@ -1161,10 +1161,10 @@ static const Xbyak_aarch64::XReg& LoadBackendCtxPtr(A64Emitter& e) {
 // host cache line; ABA on the cached value would silently succeed.
 //
 // CallReservationHelper picks the call path: on FEAT_LSE hosts a hand-emitted
-// GPR-only thunk reached by BLR (single ldsetal/ldclral/casal, no vector spill);
-// otherwise the portable C helper via CallNativeSafe. Both take the guest
-// address in w1, host address in x2 and value in w3/x3, so the arg setup below
-// is identical for either path.
+// GPR-only thunk reached by BLR (single ldsetal/ldclral/casal, no vector
+// spill); otherwise the portable C helper via CallNativeSafe. Both take the
+// guest address in w1, host address in x2 and value in w3/x3, so the arg setup
+// below is identical for either path.
 struct RESERVED_LOAD_I32
     : Sequence<RESERVED_LOAD_I32, I<OPCODE_RESERVED_LOAD, I32Op, I64Op>> {
   static void Emit(A64Emitter& e, const EmitArgType& i) {
