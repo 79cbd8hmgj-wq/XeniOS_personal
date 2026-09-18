@@ -113,6 +113,96 @@ jobs:
           path.write_text(text)
           PY
 
+      - name: Audit Xcode 15.4 and A12 compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          failures = []
+
+          user_property = Path("src/xenia/kernel/xam/user_property.cc").read_text()
+          if "static_cast<AttributeKey>(property_id)" in user_property:
+              failures.append("user_property.cc still contains the Xcode 15-incompatible AttributeKey cast")
+
+          memory_posix = Path("src/xenia/base/memory_posix.cc").read_text()
+          apple_guard = """#if !XE_PLATFORM_APPLE
+            // Apple libc++ in Xcode 15.4 exposes at_quick_exit as an unresolved using
+            // declaration. Normal atexit cleanup is sufficient on Apple platforms.
+            std::at_quick_exit(CleanupAtExit);
+          #endif"""
+          if apple_guard not in memory_posix:
+              failures.append("memory_posix.cc Apple at_quick_exit guard is missing")
+
+          dxc = Path("third_party/DirectXShaderCompiler/projects/dxilconv/lib/ShaderBinary/ShaderBinary.cpp").read_text()
+          if re.search(r"(?<![:\w])(?:min|max)\s*\(", dxc):
+              failures.append("DXC ShaderBinary.cpp still contains unqualified min/max calls")
+
+          ios_helpers = Path("src/xenia/ui/ios/shared/ios_view_helpers.mm").read_text()
+          if "UIGlassEffect" in ios_helpers and (
+              "__IPHONE_26_0" not in ios_helpers or
+              "__IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_26_0" not in ios_helpers
+          ):
+              failures.append("iOS 26 glass APIs are not guarded for the Xcode 15.4 SDK")
+
+          pipeline = Path("src/xenia/gpu/metal/metal_pipeline_cache.cc").read_text()
+          if "IROperatingSystem_iOS" not in pipeline:
+              failures.append("Metal Shader Converter is not configured with the iOS operating-system target")
+
+          release_script = Path("tools/build_apple_release.sh").read_text()
+          if 'CMAKE_OSX_DEPLOYMENT_TARGET="$ios_min"' not in release_script:
+              failures.append("--ios-min does not drive CMake iOS configuration")
+          if 'IPHONEOS_DEPLOYMENT_TARGET="$ios_min"' not in release_script:
+              failures.append("--ios-min does not drive the Xcode build setting")
+
+          unsupported_libcxx = (
+              "std::expected", "std::print(", "std::println(", "std::mdspan",
+              "std::generator", "std::move_only_function", "std::stacktrace"
+          )
+          source_suffixes = {".cc", ".cpp", ".cxx", ".h", ".hpp", ".mm"}
+          for path in Path("src").rglob("*"):
+              if not path.is_file() or path.suffix not in source_suffixes:
+                  continue
+              text = path.read_text(errors="ignore")
+              for token in unsupported_libcxx:
+                  if token in text:
+                      failures.append(f"{path}: Xcode 15.4/C++20 audit found {token}")
+
+          if failures:
+              raise SystemExit("\n".join(f"COMPAT AUDIT: {failure}" for failure in failures))
+          print("Source compatibility audit passed")
+          PY
+
+          converter="third_party/metal-shader-converter/lib_iOS/libmetalirconverter.dylib"
+          test -f "$converter"
+          file "$converter"
+          file "$converter" | grep -q "arm64"
+          xcrun vtool -show-build "$converter" | tee scratch/a12-metalirconverter-vtool.txt
+          grep -Eq 'platform[[:space:]]+IOS' scratch/a12-metalirconverter-vtool.txt
+
+          python3 - scratch/a12-metalirconverter-vtool.txt 14.7 <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          report = Path(sys.argv[1]).read_text()
+          maximum = tuple(int(x) for x in sys.argv[2].split("."))
+          maximum += (0,) * (3 - len(maximum))
+          versions = re.findall(r"\bminos\s+([0-9]+(?:\.[0-9]+){1,2})", report)
+          if not versions:
+              raise SystemExit("Metal Shader Converter dylib has no readable LC_BUILD_VERSION minos")
+          for raw in versions:
+              actual = tuple(int(x) for x in raw.split("."))
+              actual += (0,) * (3 - len(actual))
+              if actual > maximum:
+                  raise SystemExit(
+                      f"Metal Shader Converter dylib requires iOS {raw}, above the A12 validation target 14.7")
+              print(f"Metal Shader Converter dylib: minOS {raw} <= 14.7")
+          PY
+
       - name: Preflight iOS 14.7 deployment target
         shell: bash
         env:
