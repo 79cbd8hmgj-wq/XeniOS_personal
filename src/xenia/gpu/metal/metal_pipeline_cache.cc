@@ -1187,8 +1187,15 @@ bool MetalPipelineCache::InitializeShaderTranslation(
     std::ostringstream version_stream;
     version_stream << os_version.majorVersion << "." << os_version.minorVersion
                    << "." << os_version.patchVersion;
+#if XE_PLATFORM_IOS
+    constexpr IROperatingSystem kMetalConverterOperatingSystem =
+        IROperatingSystem_iOS;
+#else
+    constexpr IROperatingSystem kMetalConverterOperatingSystem =
+        IROperatingSystem_macOS;
+#endif
     metal_shader_converter_->SetMinimumTarget(
-        min_family, IROperatingSystem_macOS, version_stream.str());
+        min_family, kMetalConverterOperatingSystem, version_stream.str());
   }
 
   // Spawn async pipeline creation threads if enabled.
