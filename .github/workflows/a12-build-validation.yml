@@ -83,6 +83,36 @@ jobs:
           path.write_text(text)
           PY
 
+      - name: Patch DXC for Xcode 15.4 libc++
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("third_party/DirectXShaderCompiler/projects/dxilconv/lib/ShaderBinary/ShaderBinary.cpp")
+          text = path.read_text()
+
+          include_anchor = '#include "ShaderBinaryIncludes.h"'
+          if '#include <algorithm>' not in text:
+              if include_anchor not in text:
+                  raise SystemExit("DXC compatibility include anchor missing")
+              text = text.replace(include_anchor, include_anchor + '\\n#include <algorithm>', 1)
+
+          replacements = {
+              'switch( min( 4u, max( 1u, (UINT)(ReadTokenSafe(m_pCurrentToken)) ) ) )':
+                  'switch( std::min( 4u, std::max( 1u, (UINT)(ReadTokenSafe(m_pCurrentToken)) ) ) )',
+              'min(instruction.m_ExtendedOpCodeCount,(UINT)D3D11_SB_MAX_SIMULTANEOUS_EXTENDED_OPCODES)':
+                  'std::min(instruction.m_ExtendedOpCodeCount,(UINT)D3D11_SB_MAX_SIMULTANEOUS_EXTENDED_OPCODES)',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"DXC compatibility patch anchor missing: {old}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+
       - name: Preflight iOS 14.7 deployment target
         shell: bash
         env:
