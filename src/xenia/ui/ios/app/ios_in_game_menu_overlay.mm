@@ -249,25 +249,46 @@
                backgroundColor:(UIColor*)backgroundColor
                 foregroundColor:(UIColor*)foregroundColor
                          action:(SEL)action {
-  UIButtonConfiguration* config = [UIButtonConfiguration tintedButtonConfiguration];
-  config.title = title;
-  if (imageName.length) {
-    config.image = [UIImage systemImageNamed:imageName];
-    config.imagePadding = 6;
-  }
-  config.baseForegroundColor = foregroundColor;
-  config.baseBackgroundColor = backgroundColor;
-  config.cornerStyle = UIButtonConfigurationCornerStyleLarge;
-  config.contentInsets = NSDirectionalEdgeInsetsMake(10, 16, 10, 16);
-  if ([title isEqualToString:@"Resume"]) {
-    config = [UIButtonConfiguration filledButtonConfiguration];
+  BOOL is_resume = [title isEqualToString:@"Resume"];
+  UIButton* button = nil;
+  if (@available(iOS 15.0, *)) {
+    UIButtonConfiguration* config =
+        [UIButtonConfiguration tintedButtonConfiguration];
     config.title = title;
-    config.baseBackgroundColor = backgroundColor;
+    if (imageName.length) {
+      config.image = [UIImage systemImageNamed:imageName];
+      config.imagePadding = 6;
+    }
     config.baseForegroundColor = foregroundColor;
+    config.baseBackgroundColor = backgroundColor;
     config.cornerStyle = UIButtonConfigurationCornerStyleLarge;
-    config.contentInsets = NSDirectionalEdgeInsetsMake(12, 18, 12, 18);
+    config.contentInsets = NSDirectionalEdgeInsetsMake(10, 16, 10, 16);
+    if (is_resume) {
+      config = [UIButtonConfiguration filledButtonConfiguration];
+      config.title = title;
+      config.baseBackgroundColor = backgroundColor;
+      config.baseForegroundColor = foregroundColor;
+      config.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+      config.contentInsets = NSDirectionalEdgeInsetsMake(12, 18, 12, 18);
+    }
+    button =
+        [[UIButton buttonWithConfiguration:config primaryAction:nil] retain];
+  } else {
+    button = [[UIButton buttonWithType:UIButtonTypeSystem] retain];
+    [button setTitle:title forState:UIControlStateNormal];
+    if (imageName.length) {
+      [button setImage:[UIImage systemImageNamed:imageName]
+              forState:UIControlStateNormal];
+      button.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 6);
+    }
+    [button setTitleColor:foregroundColor forState:UIControlStateNormal];
+    button.tintColor = foregroundColor;
+    button.backgroundColor = backgroundColor;
+    button.contentEdgeInsets =
+        is_resume ? UIEdgeInsetsMake(12, 18, 12, 18)
+                  : UIEdgeInsetsMake(10, 16, 10, 16);
+    button.layer.cornerRadius = 12.0;
   }
-  UIButton* button = [[UIButton buttonWithConfiguration:config primaryAction:nil] retain];
   button.translatesAutoresizingMaskIntoConstraints = NO;
   xe_apply_button_title_font(button, UIFontTextStyleBody, 16.0, UIFontWeightSemibold);
   button.titleLabel.numberOfLines = 1;
@@ -312,19 +333,32 @@
                title:(NSString*)title
              compact:(BOOL)compact
               resume:(BOOL)resume {
-  UIButtonConfiguration* config = button.configuration;
-  config.title = title;
-  config.imagePadding = compact ? 4.0 : 6.0;
-  if (resume) {
-    config.contentInsets =
-        compact ? NSDirectionalEdgeInsetsMake(8, 14, 8, 14)
-                : NSDirectionalEdgeInsetsMake(12, 18, 12, 18);
+  if (@available(iOS 15.0, *)) {
+    UIButtonConfiguration* config = button.configuration;
+    config.title = title;
+    config.imagePadding = compact ? 4.0 : 6.0;
+    if (resume) {
+      config.contentInsets =
+          compact ? NSDirectionalEdgeInsetsMake(8, 14, 8, 14)
+                  : NSDirectionalEdgeInsetsMake(12, 18, 12, 18);
+    } else {
+      config.contentInsets =
+          compact ? NSDirectionalEdgeInsetsMake(7, 10, 7, 10)
+                  : NSDirectionalEdgeInsetsMake(10, 16, 10, 16);
+    }
+    button.configuration = config;
   } else {
-    config.contentInsets =
-        compact ? NSDirectionalEdgeInsetsMake(7, 10, 7, 10)
-                : NSDirectionalEdgeInsetsMake(10, 16, 10, 16);
+    [button setTitle:title forState:UIControlStateNormal];
+    if (resume) {
+      button.contentEdgeInsets =
+          compact ? UIEdgeInsetsMake(8, 14, 8, 14)
+                  : UIEdgeInsetsMake(12, 18, 12, 18);
+    } else {
+      button.contentEdgeInsets =
+          compact ? UIEdgeInsetsMake(7, 10, 7, 10)
+                  : UIEdgeInsetsMake(10, 16, 10, 16);
+    }
   }
-  button.configuration = config;
 
   xe_apply_button_title_font(button,
                              compact ? UIFontTextStyleSubheadline
