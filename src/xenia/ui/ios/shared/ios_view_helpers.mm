@@ -192,12 +192,14 @@ UIVisualEffectView* xe_install_chrome_backdrop(UIView* host, UIVisualEffect* eff
 }  // namespace
 
 UIVisualEffect* xe_make_chrome_visual_effect(BOOL clear_variant) {
+#if defined(__IPHONE_26_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_26_0
   if (@available(iOS 26.0, *)) {
     UIGlassEffectStyle style =
         clear_variant ? UIGlassEffectStyleClear : UIGlassEffectStyleRegular;
     return [UIGlassEffect effectWithStyle:style];
   }
-  // iOS 18-25 fallback: the closest pre-glass UIBlurEffect for each variant.
+#endif
+  // Pre-iOS-26 SDK/runtime fallback: the closest UIBlurEffect for each variant.
   // SystemUltraThinMaterial reads as the most transparent, suitable for
   // surfaces sitting on top of rich content (clear-variant callers like the
   // compat hero over game artwork). SystemMaterial is the standard chrome
