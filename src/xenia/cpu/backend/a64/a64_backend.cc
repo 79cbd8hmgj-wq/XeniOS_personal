@@ -550,7 +550,8 @@ void* A64HelperEmitter::EmitTryAcquireReservationHelper() {
   code_offsets.prolog_stack_alloc = getSize();
   code_offsets.body = getSize();
 
-  // x2 = &reserve_helper_->blocks[0] (blocks[] is at offset 0 of ReserveHelper).
+  // x2 = &reserve_helper_->blocks[0] (blocks[] is at offset 0 of
+  // ReserveHelper).
   ldr(x2, ptr(x19, static_cast<uint32_t>(
                        offsetof(A64BackendContext, reserve_helper_))));
   lsr(w3, w1, A64_RESERVE_BLOCK_SHIFT);  // block_idx = guest_addr >> 16
@@ -559,7 +560,7 @@ void* A64HelperEmitter::EmitTryAcquireReservationHelper() {
   lsl(x6, x4, 3);                        // byte offset of the word (word * 8)
   add(x2, x2, x6);                       // x2 = &blocks[word]
   mov(x7, static_cast<uint64_t>(1));
-  lsl(x7, x7, x5);                       // mask = 1 << bit
+  lsl(x7, x7, x5);  // mask = 1 << bit
 
   // Atomically OR the reservation bit in; x8 = previous word value. Equivalent
   // to the C helper's "set the bit if it was clear" CAS loop: the post-state
@@ -574,15 +575,13 @@ void* A64HelperEmitter::EmitTryAcquireReservationHelper() {
 
   // flags = (flags & ~reserve_bit) | (acquired ? reserve_bit : 0). PPC lwarx
   // implicitly drops any prior reservation, so we always clear first.
-  ldr(w9, ptr(x19,
-              static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
+  ldr(w9, ptr(x19, static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
   mov(w10, static_cast<uint32_t>(1u << kA64BackendHasReserveBit));
   bic(w9, w9, w10);   // drop prior reservation
   orr(w11, w9, w10);  // candidate flags with the reserve bit set
   tst(x8, x7);        // Z = ((old & mask) == 0) == acquired
   csel(w9, w11, w9, EQ);
-  str(w9, ptr(x19,
-              static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
+  str(w9, ptr(x19, static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
   cset(w0, EQ);
   ret();
 
@@ -642,7 +641,7 @@ void* A64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   lsr(w6, w5, 6);                        // word index
   and_(w7, w5, 63);                      // bit index
   lsl(x8, x6, 3);
-  add(x4, x4, x8);                       // x4 = &blocks[word]
+  add(x4, x4, x8);  // x4 = &blocks[word]
 
   // Validate the reservation matches the one taken by the lwarx. In correct
   // PPC code stwcx. targets the same granule as the lwarx, so this always
@@ -661,14 +660,14 @@ void* A64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
   // matching lwarx observed (A64BackendContext::cached_reserve_value_). casal
   // returns the prior memory contents in the comparand register.
   if (!bit64) {
-    ldr(w13, ptr(x19, static_cast<uint32_t>(offsetof(
-                          A64BackendContext, cached_reserve_value_))));
+    ldr(w13, ptr(x19, static_cast<uint32_t>(
+                          offsetof(A64BackendContext, cached_reserve_value_))));
     mov(w14, w13);  // keep the expected value (casal overwrites w13)
     casal(w13, w3, ptr(x2));
     cmp(w13, w14);
   } else {
-    ldr(x13, ptr(x19, static_cast<uint32_t>(offsetof(
-                          A64BackendContext, cached_reserve_value_))));
+    ldr(x13, ptr(x19, static_cast<uint32_t>(
+                          offsetof(A64BackendContext, cached_reserve_value_))));
     mov(x14, x13);
     casal(x13, x3, ptr(x2));
     cmp(x13, x14);
