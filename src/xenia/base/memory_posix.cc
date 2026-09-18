@@ -176,7 +176,11 @@ static void InstallCleanupHandlers() {
   g_cleanup_handlers_installed = true;
 
   std::atexit(CleanupAtExit);
+#if !XE_PLATFORM_APPLE
+  // Apple libc++ in Xcode 15.4 exposes at_quick_exit as an unresolved using
+  // declaration. Normal atexit cleanup is sufficient on Apple platforms.
   std::at_quick_exit(CleanupAtExit);
+#endif
 }
 #endif  // !XE_PLATFORM_ANDROID
 
