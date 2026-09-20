@@ -214,6 +214,8 @@ jobs:
           ios_runtime_apis = {
               "UIButtonConfiguration": (15, 0),
               "UISheetPresentationController": (15, 0),
+              "preferredFrameRateRange": (15, 0),
+              "CAFrameRateRangeMake": (15, 0),
               "UIContentUnavailableConfiguration": (17, 0),
               "UIHostingConfiguration": (16, 0),
               "UIPasteControl": (16, 0),
