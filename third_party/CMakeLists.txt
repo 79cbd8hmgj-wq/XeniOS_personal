@@ -805,6 +805,22 @@ if(XE_TARGET_AARCH64)
   )
   if(NOT MSVC)
     target_compile_definitions(zlib-ng PRIVATE HAVE_BUILTIN_CTZ HAVE_BUILTIN_CTZLL HAVE_ATTRIBUTE_ALIGNED)
+
+    # Match zlib-ng's own ARM build flags. crc32_acle.c requires the ARMv8 CRC
+    # extension to make arm_acle.h lower __crc32* calls to instructions rather
+    # than unresolved external symbols. Keep ISA-specific objects out of LTO so
+    # their per-file target features are preserved by Apple's linker.
+    set_source_files_properties(
+      zlib-ng/arch/arm/crc32_acle.c
+      PROPERTIES COMPILE_OPTIONS "-march=armv8-a+crc;-fno-lto"
+    )
+    set_source_files_properties(
+      zlib-ng/arch/arm/adler32_neon.c
+      zlib-ng/arch/arm/chunkset_neon.c
+      zlib-ng/arch/arm/compare256_neon.c
+      zlib-ng/arch/arm/slide_hash_neon.c
+      PROPERTIES COMPILE_OPTIONS "-march=armv8-a+simd;-fno-lto"
+    )
   endif()
 else()
   file(GLOB _zlibng_x86 "zlib-ng/arch/x86/*.c")
