@@ -438,7 +438,13 @@ jobs:
           verify_macho_minos "$main_exe"
           if [ -d "$app_bundle/Frameworks" ]; then
             while IFS= read -r -d '' candidate; do
-              if file "$candidate" | grep -q 'Mach-O.*arm64'; then
+              if file "$candidate" | grep -q 'Mach-O'; then
+                # Never silently skip a packaged Mach-O with the wrong
+                # architecture — dyld would terminate immediately on A12.
+                file "$candidate" | grep -q 'arm64' || {
+                  echo "$candidate: packaged Mach-O is not ARM64" >&2
+                  exit 1
+                }
                 verify_macho_minos "$candidate"
               fi
             done < <(find "$app_bundle/Frameworks" -type f -print0)
@@ -449,6 +455,8 @@ jobs:
           # the packaged Frameworks directory.
           verify_rpath_dependencies() {
             local binary="$1"
+            local loader_dir
+            loader_dir="$(dirname "$binary")"
             while IFS= read -r dependency; do
               dependency="${dependency%% (*}"
               case "$dependency" in
@@ -458,6 +466,26 @@ jobs:
                     echo "$binary: missing packaged dependency $dependency" >&2
                     exit 1
                   fi
+                  ;;
+                @executable_path/*)
+                  local relative="${dependency#@executable_path/}"
+                  if [ ! -e "$app_bundle/$relative" ]; then
+                    echo "$binary: missing @executable_path dependency $dependency" >&2
+                    exit 1
+                  fi
+                  ;;
+                @loader_path/*)
+                  local relative="${dependency#@loader_path/}"
+                  if [ ! -e "$loader_dir/$relative" ]; then
+                    echo "$binary: missing @loader_path dependency $dependency" >&2
+                    exit 1
+                  fi
+                  ;;
+                /System/Library/*|/usr/lib/*)
+                  ;;
+                /*)
+                  echo "$binary: unexpected non-system absolute dependency $dependency" >&2
+                  exit 1
                   ;;
               esac
             done < <(otool -L "$binary" | tail -n +2 | sed 's/^[[:space:]]*//')
