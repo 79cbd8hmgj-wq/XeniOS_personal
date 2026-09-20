@@ -168,6 +168,14 @@ jobs:
           if 'IPHONEOS_DEPLOYMENT_TARGET="$ios_min"' not in release_script:
               failures.append("--ios-min does not drive the Xcode build setting")
 
+          root_cmake = Path("CMakeLists.txt").read_text()
+          if "-Werror=unguarded-availability" not in root_cmake:
+              failures.append("first-party iOS targets do not make unguarded SDK availability fatal")
+
+          ios_entitlements = Path("xenia_ios.entitlements").read_text()
+          if "com.apple.security.files.user-selected." in ios_entitlements:
+              failures.append("iOS entitlements contain a macOS App Sandbox user-selected-files entitlement")
+
           unsupported_libcxx = (
               "std::expected", "std::print(", "std::println(", "std::mdspan",
               "std::generator", "std::move_only_function", "std::stacktrace",
