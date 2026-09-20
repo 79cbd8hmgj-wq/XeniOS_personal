@@ -232,8 +232,11 @@ void xe_request_orientation(UIViewController* view_controller, UIInterfaceOrient
   }
   (void)orientation;
 #if !TARGET_OS_TV
-  [view_controller setNeedsUpdateOfSupportedInterfaceOrientations];
+  // setNeedsUpdateOfSupportedInterfaceOrientations is only available on
+  // iOS 16 and later. Calling it unguarded crashes iOS 14/15 at launch with
+  // an unrecognized selector before Xenia logging has been initialized.
   if (@available(iOS 16.0, *)) {
+    [view_controller setNeedsUpdateOfSupportedInterfaceOrientations];
     UIWindowScene* scene = view_controller.view.window.windowScene;
     if (!scene) {
       for (UIScene* connected_scene in [UIApplication sharedApplication].connectedScenes) {
@@ -330,7 +333,11 @@ void xe_request_current_orientation(UIViewController* view_controller) {
         xe_interface_orientation_from_device_orientation([UIDevice currentDevice].orientation);
   }
   if (orientation == UIInterfaceOrientationUnknown) {
-    [view_controller setNeedsUpdateOfSupportedInterfaceOrientations];
+#if !TARGET_OS_TV
+    if (@available(iOS 16.0, *)) {
+      [view_controller setNeedsUpdateOfSupportedInterfaceOrientations];
+    }
+#endif
     [UIViewController attemptRotationToDeviceOrientation];
     return;
   }
