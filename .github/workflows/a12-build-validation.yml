@@ -222,7 +222,31 @@ jobs:
                   active_guards = [
                       guard for guard in active_guards if depth > guard[0]
                   ]
-              return any(version <= minimum for _, version in active_guards)
+              # A guard must require the API's introduction version or a
+              # newer runtime. For example, an iOS 15 guard does NOT protect
+              # an API introduced in iOS 16, while iOS 16 or 17 guards do.
+              return any(version >= minimum for _, version in active_guards)
+
+          # Keep the guard-direction logic honest. These probes model an API
+          # introduced in iOS 16 and prevent a future <=/>= regression.
+          if guarded_by_available([
+              "if (@available(iOS 15.0, *)) {",
+              "  API_CALL();",
+              "}",
+          ], 1, (16, 0)):
+              failures.append("availability audit incorrectly accepts an iOS 15 guard for an iOS 16 API")
+          if not guarded_by_available([
+              "if (@available(iOS 16.0, *)) {",
+              "  API_CALL();",
+              "}",
+          ], 1, (16, 0)):
+              failures.append("availability audit rejects an exact iOS 16 guard")
+          if not guarded_by_available([
+              "if (@available(iOS 17.0, *)) {",
+              "  API_CALL();",
+              "}",
+          ], 1, (16, 0)):
+              failures.append("availability audit rejects a stricter iOS 17 guard for an iOS 16 API")
 
           for path in Path("src/xenia/ui/ios").rglob("*.mm"):
               lines = path.read_text(errors="ignore").splitlines()
