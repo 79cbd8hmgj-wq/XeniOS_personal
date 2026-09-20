@@ -267,7 +267,12 @@ jobs:
           ], 1, (16, 0)):
               failures.append("availability audit rejects a stricter iOS 17 guard for an iOS 16 API")
 
-          for path in Path("src/xenia/ui/ios").rglob("*.mm"):
+          ios_runtime_sources = list(Path("src/xenia/ui/ios").rglob("*.mm"))
+          ios_runtime_sources.append(Path("src/xenia/app/xenia_main_ios.mm"))
+          ios_runtime_sources.extend(Path("src/xenia/ui/metal").rglob("*.mm"))
+          ios_runtime_sources.extend(Path("src/xenia/gpu/metal").rglob("*.mm"))
+
+          for path in ios_runtime_sources:
               lines = path.read_text(errors="ignore").splitlines()
               for line_index, line in enumerate(lines):
                   code = line.split("//", 1)[0]
