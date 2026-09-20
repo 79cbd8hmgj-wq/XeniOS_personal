@@ -25,6 +25,10 @@
 #include <utility>
 #include <vector>
 
+#if XE_PLATFORM_IOS
+#include <sys/sysctl.h>
+#endif
+
 #include "third_party/metal-cpp/Foundation/NSProcessInfo.hpp"
 #include "third_party/metal-cpp/Foundation/NSURL.hpp"
 
@@ -72,7 +76,8 @@ DECLARE_bool(depth_float24_round);
 
 DEFINE_int32(metal_pipeline_creation_threads, -1,
              "Number of threads for background pipeline compilation. "
-             "-1 = auto (75% of cores), 0 = disabled (synchronous).",
+             "-1 = auto (75% of cores, capped at 2 on iPhone XR), "
+             "0 = disabled (synchronous).",
              "Metal");
 
 namespace xe {
@@ -80,6 +85,19 @@ namespace gpu {
 namespace metal {
 
 namespace {
+
+bool IsIPhoneXRHardware() {
+#if XE_PLATFORM_IOS
+  char machine[64] = {};
+  size_t machine_size = sizeof(machine);
+  if (sysctlbyname("hw.machine", machine, &machine_size, nullptr, 0) != 0) {
+    return false;
+  }
+  return std::strcmp(machine, "iPhone11,8") == 0;
+#else
+  return false;
+#endif
+}
 
 void AtomicMax(std::atomic<uint64_t>& target, uint64_t value) {
   uint64_t current = target.load(std::memory_order_relaxed);
@@ -1202,12 +1220,23 @@ bool MetalPipelineCache::InitializeShaderTranslation(
   int32_t thread_count_config = cvars::metal_pipeline_creation_threads;
   uint32_t logical_cores = std::thread::hardware_concurrency();
   uint32_t thread_count = 0;
+  bool xr_auto_cap = false;
   if (thread_count_config < 0) {
     thread_count = std::max(1u, logical_cores * 3 / 4);
+#if XE_PLATFORM_IOS
+    if (IsIPhoneXRHardware()) {
+      thread_count = std::min(thread_count, 2u);
+      xr_auto_cap = true;
+    }
+#endif
   } else {
     thread_count =
         std::min(static_cast<uint32_t>(thread_count_config), logical_cores);
   }
+  XELOGI(
+      "MetalPipelineCache: pipeline workers selected={} config={} "
+      "logical_cores={} xr_auto_cap={}",
+      thread_count, thread_count_config, logical_cores, xr_auto_cap);
   if (thread_count > 0 && cvars::async_shader_compilation) {
     creation_threads_.reserve(thread_count);
     for (uint32_t i = 0; i < thread_count; ++i) {
