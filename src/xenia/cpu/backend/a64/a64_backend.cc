@@ -624,13 +624,11 @@ void* A64HelperEmitter::EmitReservedStoreHelper(bool bit64) {
 
   // had_reservation = flags & reserve_bit; clear the bit unconditionally
   // (PPC stwcx. always releases the reservation).
-  ldr(w9, ptr(x19,
-              static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
+  ldr(w9, ptr(x19, static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
   mov(w10, static_cast<uint32_t>(1u << kA64BackendHasReserveBit));
   and_(w11, w9, w10);  // w11 = had_reservation ? reserve_bit : 0
   bic(w9, w9, w10);
-  str(w9, ptr(x19,
-              static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
+  str(w9, ptr(x19, static_cast<uint32_t>(offsetof(A64BackendContext, flags))));
   mov(w0, 0);      // default: store not performed
   cbz(w11, done);  // no reservation held -> fail
 
