@@ -28,6 +28,17 @@ DECLARE_path(log_file);
 
 namespace {
 
+void LogIOSUncaughtException(NSException* exception) {
+  NSString* name = exception.name ?: @"UnknownException";
+  NSString* reason = exception.reason ?: @"No reason";
+  NSArray<NSString*>* stack = exception.callStackSymbols;
+  NSString* stack_text = stack.count ? [stack componentsJoinedByString:@" | "] : @"Unavailable";
+  XELOGE("iOS uncaught Objective-C exception: name={} reason={} stack={}",
+         name.UTF8String ?: "UnknownException",
+         reason.UTF8String ?: "No reason",
+         stack_text.UTF8String ?: "Unavailable");
+}
+
 void LogIOSStartupDiagnostics() {
   NSProcessInfo* process_info = [NSProcessInfo processInfo];
   UIDevice* ui_device = [UIDevice currentDevice];
@@ -139,18 +150,26 @@ void LogIOSStartupDiagnostics() {
     cvars::log_file = xe_get_ios_documents_path() / "xenia.log";
   }
   xe::InitializeLogging(app_->GetName());
+  NSSetUncaughtExceptionHandler(&LogIOSUncaughtException);
   XELOGI("iOS: Bootstrap logging initialized (source={})",
          source_tag ? source_tag : "unknown");
 
   // Set up the UIKit window and view controller so the Metal view is
   // available when the app performs full initialization.
+  XELOGI("iOS bootstrap: creating root view controller");
   XeniaViewController* vc = [[XeniaViewController alloc] init];
+  XELOGI("iOS bootstrap: root view controller created");
   self.window.rootViewController = vc;
+  XELOGI("iOS bootstrap: presenting root window");
   [self.window makeKeyAndVisible];
+  XELOGI("iOS bootstrap: root window visible");
   xe_request_current_orientation(vc);
+  XELOGI("iOS bootstrap: initial orientation request complete");
 
   // Force layout so the Metal view is created.
+  XELOGI("iOS bootstrap: forcing initial view layout");
   [vc.view layoutIfNeeded];
+  XELOGI("iOS bootstrap: initial view layout complete");
 
   // Store the Metal view and view controller in the app context for
   // iOSWindow to use.
