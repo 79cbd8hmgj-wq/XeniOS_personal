@@ -212,11 +212,11 @@ jobs:
               for raw_line in lines[: index + 1]:
                   line = raw_line.split("//", 1)[0]
                   match = re.search(
-                      r"@available\s*\(\s*iOS\s+(\d+)\.(\d+)", line)
+                      r"@available\s*\(\s*iOS\s+(\d+)(?:\.(\d+))?", line)
                   opens = line.count("{")
                   closes = line.count("}")
                   if match and "{" in line:
-                      version = (int(match.group(1)), int(match.group(2)))
+                      version = (int(match.group(1)), int(match.group(2) or 0))
                       active_guards.append((depth, version))
                   depth += opens - closes
                   active_guards = [
@@ -339,6 +339,8 @@ jobs:
               IPHONEOS_DEPLOYMENT_TARGET=14.7 \
               CODE_SIGNING_ALLOWED=NO \
               COMPILER_INDEX_STORE_ENABLE=NO \
+              OTHER_CFLAGS='$(inherited) -Werror=unguarded-availability' \
+              OTHER_CPLUSPLUSFLAGS='$(inherited) -Werror=unguarded-availability' \
               build
           done
 
