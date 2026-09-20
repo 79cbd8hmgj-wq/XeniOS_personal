@@ -193,6 +193,8 @@ jobs:
               "UICalendarView": (16, 0),
               "UIEditMenuInteraction": (16, 0),
               "UIFindInteraction": (16, 0),
+              "setNeedsUpdateOfSupportedInterfaceOrientations": (16, 0),
+              "UIWindowSceneGeometryPreferencesIOS": (16, 0),
               "UIUpdateLink": (18, 0),
           }
 
