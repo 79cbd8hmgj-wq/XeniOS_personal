@@ -234,8 +234,15 @@ void iOSWindow::ApplyDisplayLinkFrameRateRangeFromUIThread() {
       guest_display_refresh_capped_ ? capped_fps : maximum_fps;
   const float maximum_range_fps =
       guest_display_refresh_capped_ ? capped_fps : maximum_fps;
-  display_link_.preferredFrameRateRange =
-      CAFrameRateRangeMake(capped_fps, maximum_range_fps, preferred_fps);
+  if (@available(iOS 15.0, *)) {
+    display_link_.preferredFrameRateRange =
+        CAFrameRateRangeMake(capped_fps, maximum_range_fps, preferred_fps);
+  } else {
+    // preferredFrameRateRange / CAFrameRateRange were introduced in iOS 15.
+    // iOS 14.7 still supports the integer preferredFramesPerSecond API.
+    display_link_.preferredFramesPerSecond =
+        static_cast<NSInteger>(std::lround(preferred_fps));
+  }
 }
 
 }  // namespace ui
