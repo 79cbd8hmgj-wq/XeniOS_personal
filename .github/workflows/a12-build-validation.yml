@@ -287,13 +287,17 @@ jobs:
           echo "Resolved IPHONEOS_DEPLOYMENT_TARGET: $deployment_target"
           test "$deployment_target" = "14.7"
 
-      - name: Compile high-risk iOS targets first
+      - name: Compile full iOS 14.7 compatibility surface first
         shell: bash
         env:
           CMAKE_OSX_DEPLOYMENT_TARGET: "14.7"
         run: |
           set -euo pipefail
-          for target in zlib-ng xenia-base xenia-ui-ios xenia-gpu-metal; do
+          # xenia-app pulls in the launcher/startup translation units that a
+          # library-only smoke build can miss. The CMake targets also promote
+          # Clang's SDK availability diagnostics to errors for first-party iOS
+          # and Metal code.
+          for target in zlib-ng xenia-base xenia-ui-ios xenia-gpu-metal xenia-ui-metal xenia-app; do
             echo "== compatibility smoke target: $target =="
             xcodebuild \
               -project build-ios-xcode/xenia.xcodeproj \

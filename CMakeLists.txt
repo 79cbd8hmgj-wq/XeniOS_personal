@@ -468,4 +468,25 @@ add_subdirectory(third_party)
 
 add_subdirectory(src/xenia)
 
+# iOS must remain runnable on the configured deployment target. Convert Clang's
+# SDK availability diagnostics into hard errors for first-party targets that
+# contain iOS / Objective-C++ runtime code. This catches direct uses of APIs
+# newer than CMAKE_OSX_DEPLOYMENT_TARGET even when they compile with a newer SDK.
+if(XE_PLATFORM_IOS)
+  foreach(_xe_ios_availability_target IN ITEMS
+          xenia-app
+          xenia-ui-ios
+          xenia-ui-metal
+          xenia-gpu-metal)
+    if(TARGET ${_xe_ios_availability_target})
+      target_compile_options(${_xe_ios_availability_target} PRIVATE
+        $<$<COMPILE_LANGUAGE:C>:-Werror=unguarded-availability>
+        $<$<COMPILE_LANGUAGE:CXX>:-Werror=unguarded-availability>
+        $<$<COMPILE_LANGUAGE:OBJC>:-Werror=unguarded-availability>
+        $<$<COMPILE_LANGUAGE:OBJCXX>:-Werror=unguarded-availability>
+      )
+    endif()
+  endforeach()
+endif()
+
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT xenia-app)
