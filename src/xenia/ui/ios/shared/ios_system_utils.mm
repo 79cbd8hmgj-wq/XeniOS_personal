@@ -382,6 +382,7 @@ NSString* xe_device_display_name_for_machine(NSString* raw_machine) {
           }
         };
 
+    add_names(@[ @"iPhone11,8" ], @"iPhone XR");
     add_names(@[ @"iPhone13,1" ], @"iPhone 12 Mini");
     add_names(@[ @"iPhone13,2" ], @"iPhone 12");
     add_names(@[ @"iPhone13,3" ], @"iPhone 12 Pro");
