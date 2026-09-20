@@ -291,7 +291,7 @@ jobs:
           CMAKE_OSX_DEPLOYMENT_TARGET: "14.7"
         run: |
           set -euo pipefail
-          for target in xenia-base xenia-ui-ios xenia-gpu-metal; do
+          for target in zlib-ng xenia-base xenia-ui-ios xenia-gpu-metal; do
             echo "== compatibility smoke target: $target =="
             xcodebuild \
               -project build-ios-xcode/xenia.xcodeproj \
@@ -303,6 +303,14 @@ jobs:
               COMPILER_INDEX_STORE_ENABLE=NO \
               build
           done
+
+          zlib_archive="build-ios-xcode/obj/iOS/Release/libzlib-ng.a"
+          test -f "$zlib_archive"
+          xcrun nm -u "$zlib_archive" | tee scratch/a12-zlib-ng-undefined.txt
+          if grep -Eq '___crc32[bdhw]([[:space:]]|$)' scratch/a12-zlib-ng-undefined.txt; then
+            echo "zlib-ng still contains unresolved ARM ACLE CRC intrinsics" >&2
+            exit 1
+          fi
 
       - name: Build ad-hoc iOS 14.7 IPA
         shell: bash
