@@ -125,11 +125,25 @@ void LogIOSStartupDiagnostics() {
   char** argv_ptr = argv;
   cvar::ParseLaunchArguments(argc, argv_ptr, "", {});
 
-  // Create the app context.
+  // Create the lightweight app shell and initialize persistent logging before
+  // any UIKit side effects. WindowedApp construction is intentionally safe
+  // before platform-specific initialization, and this ensures launch-path
+  // failures (window creation, orientation, view loading) leave xenia.log
+  // evidence instead of dying before logging exists.
   app_context_ = std::make_unique<xe::ui::IOSWindowedAppContext>();
+  app_ = xe::ui::GetWindowedAppCreator()(*app_context_);
+  if (!app_) {
+    return NO;
+  }
+  if (cvars::log_file.empty()) {
+    cvars::log_file = xe_get_ios_documents_path() / "xenia.log";
+  }
+  xe::InitializeLogging(app_->GetName());
+  XELOGI("iOS: Bootstrap logging initialized (source={})",
+         source_tag ? source_tag : "unknown");
 
-  // Set up the UIKit window and view controller FIRST, so the Metal view
-  // is available when the app initializes.
+  // Set up the UIKit window and view controller so the Metal view is
+  // available when the app performs full initialization.
   XeniaViewController* vc = [[XeniaViewController alloc] init];
   self.window.rootViewController = vc;
   [self.window makeKeyAndVisible];
@@ -237,12 +251,9 @@ void LogIOSStartupDiagnostics() {
          static_cast<uint32_t>(vc.metalView.bounds.size.width * vc.metalView.contentScaleFactor),
          static_cast<uint32_t>(vc.metalView.bounds.size.height * vc.metalView.contentScaleFactor));
 
-  // Create and initialize the Xenia app.
-  app_ = xe::ui::GetWindowedAppCreator()(*app_context_);
-  if (cvars::log_file.empty()) {
-    cvars::log_file = xe_get_ios_documents_path() / "xenia.log";
-  }
-  xe::InitializeLogging(app_->GetName());
+  // The app shell and logging are already alive so failures above are
+  // diagnosable. Full emulator initialization still waits until UIKit/Metal
+  // are ready.
   LogIOSStartupDiagnostics();
 
   if (!app_->OnInitialize()) {

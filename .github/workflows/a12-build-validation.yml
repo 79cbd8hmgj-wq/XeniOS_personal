@@ -176,6 +176,16 @@ jobs:
           if "com.apple.security.files.user-selected." in ios_entitlements:
               failures.append("iOS entitlements contain a macOS App Sandbox user-selected-files entitlement")
 
+          app_delegate = Path("src/xenia/ui/ios/app/ios_app_delegate.mm").read_text()
+          logging_pos = app_delegate.find("xe::InitializeLogging(app_->GetName())")
+          key_visible_pos = app_delegate.find("[self.window makeKeyAndVisible]")
+          orientation_pos = app_delegate.find("xe_request_current_orientation(vc)")
+          if logging_pos < 0:
+              failures.append("iOS bootstrap no longer initializes persistent logging")
+          elif ((key_visible_pos >= 0 and logging_pos > key_visible_pos) or
+                (orientation_pos >= 0 and logging_pos > orientation_pos)):
+              failures.append("iOS bootstrap logging is initialized after risky UIKit launch calls")
+
           unsupported_libcxx = (
               "std::expected", "std::print(", "std::println(", "std::mdspan",
               "std::generator", "std::move_only_function", "std::stacktrace",
@@ -267,6 +277,9 @@ jobs:
               raise SystemExit("\n".join(f"COMPAT AUDIT: {failure}" for failure in failures))
           print("Source compatibility audit passed")
           PY
+
+          plutil -lint src/xenia/app/Info_ios.plist
+          plutil -lint xenia_ios.entitlements
 
           converter="third_party/metal-shader-converter/lib_iOS/libmetalirconverter.dylib"
           test -f "$converter"
@@ -422,6 +435,41 @@ jobs:
             done < <(find "$app_bundle/Frameworks" -type f -print0)
           fi
 
+          # Catch dyld failures before device testing. Every @rpath dependency
+          # referenced by the app or an embedded Mach-O must actually exist in
+          # the packaged Frameworks directory.
+          verify_rpath_dependencies() {
+            local binary="$1"
+            while IFS= read -r dependency; do
+              dependency="${dependency%% (*}"
+              case "$dependency" in
+                @rpath/*)
+                  local basename="${dependency##*/}"
+                  if [ ! -e "$app_bundle/Frameworks/$basename" ]; then
+                    echo "$binary: missing packaged dependency $dependency" >&2
+                    exit 1
+                  fi
+                  ;;
+              esac
+            done < <(otool -L "$binary" | tail -n +2 | sed 's/^[[:space:]]*//')
+          }
+
+          verify_rpath_dependencies "$main_exe"
+          if [ -d "$app_bundle/Frameworks" ]; then
+            while IFS= read -r -d '' candidate; do
+              if file "$candidate" | grep -q 'Mach-O'; then
+                verify_rpath_dependencies "$candidate"
+              fi
+            done < <(find "$app_bundle/Frameworks" -type f -print0)
+          fi
+
+          plutil -lint "$app_bundle/Info.plist"
+          codesign --verify --deep --strict --verbose=2 "$app_bundle"
+          codesign -d --entitlements :- "$app_bundle" > scratch/a12-signed-entitlements.plist
+          plutil -lint scratch/a12-signed-entitlements.plist
+          /usr/libexec/PlistBuddy -c \
+            'Print :com.apple.developer.kernel.increased-memory-limit' \
+            scratch/a12-signed-entitlements.plist | grep -qx 'true'
           codesign -dv --verbose=2 "$app_bundle"
 
       - name: Upload validation IPA
