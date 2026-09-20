@@ -10,6 +10,7 @@
 #include "xenia/gpu/metal/metal_heap_pool.h"
 
 #include <algorithm>
+#include <mutex>
 #include <utility>
 
 #include "xenia/base/logging.h"
@@ -26,16 +27,22 @@ constexpr size_t kMinMaxHeapBytes = 256ull * 1024ull * 1024ull;
 constexpr size_t kMaxMaxHeapBytes = 1024ull * 1024ull * 1024ull;
 
 size_t GetMaxHeapBytes(MTL::Device* device) {
-  if (!device) {
-    return kDefaultMaxHeapBytes;
+  uint64_t recommended = device ? device->recommendedMaxWorkingSetSize() : 0;
+  uint64_t budget = kDefaultMaxHeapBytes;
+  if (recommended) {
+    budget = recommended / 4;
+    budget = std::max<uint64_t>(budget, kMinMaxHeapBytes);
+    budget = std::min<uint64_t>(budget, kMaxMaxHeapBytes);
   }
-  uint64_t recommended = device->recommendedMaxWorkingSetSize();
-  if (!recommended) {
-    return kDefaultMaxHeapBytes;
-  }
-  uint64_t budget = recommended / 4;
-  budget = std::max<uint64_t>(budget, kMinMaxHeapBytes);
-  budget = std::min<uint64_t>(budget, kMaxMaxHeapBytes);
+#if XE_PLATFORM_IOS
+  static std::once_flag diagnostics_once;
+  std::call_once(diagnostics_once, [recommended, budget]() {
+    XELOGI(
+        "MetalHeapPool: iOS budget diagnostics "
+        "recommended_working_set_mb={} max_heap_budget_mb={}",
+        recommended / (1024ull * 1024ull), budget / (1024ull * 1024ull));
+  });
+#endif
   return static_cast<size_t>(budget);
 }
 
