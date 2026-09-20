@@ -9,6 +9,8 @@
 
 #import "xenia/ui/ios/app/ios_app_delegate.h"
 
+#import <Metal/Metal.h>
+
 #include <memory>
 #include <string>
 
@@ -23,6 +25,38 @@
 #import "xenia/ui/ios/shared/ios_view_helpers.h"
 
 DECLARE_path(log_file);
+
+namespace {
+
+void LogIOSStartupDiagnostics() {
+  NSProcessInfo* process_info = [NSProcessInfo processInfo];
+  UIDevice* ui_device = [UIDevice currentDevice];
+  NSString* machine = xe_device_machine();
+  NSString* display_name = xe_device_display_name_for_machine(machine);
+  NSString* os_version = ui_device.systemVersion ?: @"Unknown";
+  id<MTLDevice> metal_device = MTLCreateSystemDefaultDevice();
+
+  const uint64_t physical_ram_mb =
+      static_cast<uint64_t>(process_info.physicalMemory) / (1024ull * 1024ull);
+  const uint64_t recommended_working_set_mb =
+      metal_device
+          ? static_cast<uint64_t>(metal_device.recommendedMaxWorkingSetSize) /
+                (1024ull * 1024ull)
+          : 0ull;
+
+  XELOGI(
+      "iOS startup diagnostics: machine={} device={} ios={} "
+      "physical_ram_mb={} active_cpu={} logical_cpu={} "
+      "metal_recommended_working_set_mb={} increased_memory_entitlement={}",
+      machine.UTF8String ?: "Unknown", display_name.UTF8String ?: "Unknown",
+      os_version.UTF8String ?: "Unknown", physical_ram_mb,
+      static_cast<uint32_t>(process_info.activeProcessorCount),
+      static_cast<uint32_t>(process_info.processorCount),
+      recommended_working_set_mb,
+      xe_has_increased_memory_limit_entitlement() ? true : false);
+}
+
+}  // namespace
 
 @implementation XeniaAppDelegate {
   std::unique_ptr<xe::ui::IOSWindowedAppContext> app_context_;
@@ -209,6 +243,7 @@ DECLARE_path(log_file);
     cvars::log_file = xe_get_ios_documents_path() / "xenia.log";
   }
   xe::InitializeLogging(app_->GetName());
+  LogIOSStartupDiagnostics();
 
   if (!app_->OnInitialize()) {
     XELOGE("iOS: App initialization failed");
