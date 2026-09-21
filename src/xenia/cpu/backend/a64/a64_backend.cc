@@ -986,16 +986,35 @@ A64Backend::~A64Backend() {
 }
 
 bool A64Backend::Initialize(Processor* processor) {
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64Backend::Initialize begin trampolines_sub4gb={}",
+         guest_trampolines_sub4gb_);
+#endif  // XE_PLATFORM_IOS
   if (!Backend::Initialize(processor)) {
+#if XE_PLATFORM_IOS
+    XELOGE("iOS launch diag: A64Backend base initialize failed");
+#endif  // XE_PLATFORM_IOS
     return false;
   }
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64Backend base initialize complete");
+#endif  // XE_PLATFORM_IOS
 
   // Fast indirection is only viable if trampolines made it under 4GB.
   code_cache_->set_allow_fast_indirection(guest_trampolines_sub4gb_);
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 code cache initialize begin");
+#endif  // XE_PLATFORM_IOS
   if (!code_cache_->Initialize()) {
     XELOGE("A64Backend: Failed to initialize code cache");
+#if XE_PLATFORM_IOS
+    XELOGE("iOS launch diag: A64 code cache initialize failed");
+#endif  // XE_PLATFORM_IOS
     return false;
   }
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 code cache initialize complete");
+#endif  // XE_PLATFORM_IOS
 
   // Expose the code cache to the base Backend class.
   Backend::code_cache_ = code_cache_.get();
@@ -1017,12 +1036,33 @@ bool A64Backend::Initialize(Processor* processor) {
   vec_set.count = A64Emitter::VEC_COUNT;
 
   // Generate thunks using ARM64 assembler.
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 helper emitter construct begin");
+#endif  // XE_PLATFORM_IOS
   XbyakA64Allocator allocator;
   A64HelperEmitter thunk_emitter(this, &allocator);
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 helper emitter construct complete");
+  XELOGW("iOS launch diag: A64 host-to-guest thunk begin");
+#endif  // XE_PLATFORM_IOS
 
   host_to_guest_thunk_ = thunk_emitter.EmitHostToGuestThunk();
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 host-to-guest thunk complete ptr={:p}",
+         reinterpret_cast<void*>(host_to_guest_thunk_));
+  XELOGW("iOS launch diag: A64 guest-to-host thunk begin");
+#endif  // XE_PLATFORM_IOS
   guest_to_host_thunk_ = thunk_emitter.EmitGuestToHostThunk();
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 guest-to-host thunk complete ptr={:p}",
+         reinterpret_cast<void*>(guest_to_host_thunk_));
+  XELOGW("iOS launch diag: A64 resolve thunk begin");
+#endif  // XE_PLATFORM_IOS
   resolve_function_thunk_ = thunk_emitter.EmitResolveFunctionThunk();
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 resolve thunk complete ptr={:p}",
+         reinterpret_cast<void*>(resolve_function_thunk_));
+#endif  // XE_PLATFORM_IOS
 
   if (!host_to_guest_thunk_ || !guest_to_host_thunk_ ||
       !resolve_function_thunk_) {
@@ -1031,8 +1071,15 @@ bool A64Backend::Initialize(Processor* processor) {
   }
 
   if (cvars::a64_enable_host_guest_stack_synchronization) {
+#if XE_PLATFORM_IOS
+    XELOGW("iOS launch diag: A64 stack-sync helper begin");
+#endif  // XE_PLATFORM_IOS
     synchronize_guest_and_host_stack_helper_ =
         thunk_emitter.EmitGuestAndHostSynchronizeStackHelper();
+#if XE_PLATFORM_IOS
+    XELOGW("iOS launch diag: A64 stack-sync helper complete ptr={:p}",
+           synchronize_guest_and_host_stack_helper_);
+#endif  // XE_PLATFORM_IOS
   }
 
   // Wire up reservation helpers used by RESERVED_LOAD/STORE codegen.
@@ -1042,10 +1089,16 @@ bool A64Backend::Initialize(Processor* processor) {
   // gates the call site in A64Emitter::CallReservationHelper, so the chosen
   // helper and call mechanism always agree.
   if (thunk_emitter.IsFeatureEnabled(xe::arm64::kA64EmitLSE)) {
+#if XE_PLATFORM_IOS
+    XELOGW("iOS launch diag: A64 LSE reservation helpers begin");
+#endif  // XE_PLATFORM_IOS
     try_acquire_reservation_helper_ =
         thunk_emitter.EmitTryAcquireReservationHelper();
     reserved_store_32_helper = thunk_emitter.EmitReservedStoreHelper(false);
     reserved_store_64_helper = thunk_emitter.EmitReservedStoreHelper(true);
+#if XE_PLATFORM_IOS
+    XELOGW("iOS launch diag: A64 LSE reservation helpers complete");
+#endif  // XE_PLATFORM_IOS
   } else {
     try_acquire_reservation_helper_ =
         reinterpret_cast<void*>(&TryAcquireReservationHelper);
@@ -1057,20 +1110,41 @@ bool A64Backend::Initialize(Processor* processor) {
   // Use 64-bit encoding: the resolve thunk address is encoded as a rel32
   // offset if it lands inside the code cache, or as a tagged external-table
   // index otherwise.
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 indirection default begin");
+#endif  // XE_PLATFORM_IOS
   static_cast<A64CodeCache*>(code_cache_.get())
       ->set_indirection_default_64(
           reinterpret_cast<uint64_t>(resolve_function_thunk_));
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 indirection default complete");
+#endif  // XE_PLATFORM_IOS
 
   // Commit the indirection table range used by guest trampolines so that
   // CreateGuestTrampoline can call AddIndirection without faulting.
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 guest-trampoline indirection commit begin");
+#endif  // XE_PLATFORM_IOS
   code_cache_->CommitExecutableRange(GUEST_TRAMPOLINE_BASE,
                                      GUEST_TRAMPOLINE_END);
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 guest-trampoline indirection commit complete");
+  XELOGW("iOS launch diag: A64 special indirection commit begin");
+#endif  // XE_PLATFORM_IOS
 
   // Commit special indirection ranges (force return address, etc.).
   code_cache_->CommitExecutableRange(0x9FFF0000, 0x9FFFFFFF);
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 special indirection commit complete");
+  XELOGW("iOS launch diag: A64 exception handler install begin");
+#endif  // XE_PLATFORM_IOS
 
   // Register exception handler for MMIO access from JIT code.
   ExceptionHandler::Install(ExceptionCallbackThunk, this);
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64 exception handler install complete");
+  XELOGW("iOS launch diag: A64Backend::Initialize complete");
+#endif  // XE_PLATFORM_IOS
 
   return true;
 }
