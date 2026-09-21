@@ -190,8 +190,9 @@ class CodeCacheBase : public CodeCache {
         file_name_, kGeneratedCodeSize,
         xe::memory::PageAccess::kExecuteReadWrite, false);
 #if XE_PLATFORM_IOS && XE_ARCH_ARM64
-    XELOGW("iOS launch diag: code cache backing mapping create complete valid={}",
-           mapping_ != xe::memory::kFileMappingHandleInvalid);
+    XELOGW(
+        "iOS launch diag: code cache backing mapping create complete valid={}",
+        mapping_ != xe::memory::kFileMappingHandleInvalid);
 #endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
     if (mapping_ == xe::memory::kFileMappingHandleInvalid) {
       XELOGE("Unable to create code cache mmap");
@@ -278,7 +279,8 @@ class CodeCacheBase : public CodeCache {
     external_indirection_targets_ =
         std::make_unique<uint64_t[]>(kIndirectionExternalCapacity);
 #if XE_PLATFORM_IOS && XE_ARCH_ARM64
-    XELOGW("iOS launch diag: code cache external indirection allocate complete");
+    XELOGW(
+        "iOS launch diag: code cache external indirection allocate complete");
 #endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
     if (!external_indirection_targets_) {
       XELOGE("Unable to allocate external indirection table (entries={})",
@@ -368,10 +370,9 @@ class CodeCacheBase : public CodeCache {
       if (!generated_code_execute_base_ && !generated_code_write_base_ &&
           !IOSHasTXM()) {
         XELOGW("iOS launch diag: code cache direct RWX mmap probe begin");
-        auto* direct_rwx = reinterpret_cast<uint8_t*>(
-            mmap(nullptr, kGeneratedCodeSize,
-                 PROT_READ | PROT_WRITE | PROT_EXEC,
-                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+        auto* direct_rwx = reinterpret_cast<uint8_t*>(mmap(
+            nullptr, kGeneratedCodeSize, PROT_READ | PROT_WRITE | PROT_EXEC,
+            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
         if (direct_rwx != MAP_FAILED) {
           generated_code_execute_base_ = direct_rwx;
           generated_code_write_base_ = direct_rwx;
