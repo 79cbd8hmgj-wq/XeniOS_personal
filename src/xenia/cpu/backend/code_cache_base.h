@@ -362,11 +362,28 @@ class CodeCacheBase : public CodeCache {
         }
       }
 
-      // Older non-TXM iOS releases may permit direct anonymous RWX mappings
-      // in environments that allow JIT, while rejecting later RW->RX
-      // transitions on the same mapping. The A64 guest-trampoline pool already
-      // relies on this capability. Prefer the direct mapping when available,
-      // but keep the existing W^X flip path as a fallback.
+      // Pre-TXM iOS is most reliable with separate W^X aliases: write through
+      // an RW view and execute through an RX view of the same physical pages.
+      // This avoids relying on a later RW->RX transition, which iOS may report
+      // as successful without making generated code executable.
+      if (!generated_code_execute_base_ && !generated_code_write_base_ &&
+          !IOSHasTXM()) {
+        XELOGW("iOS launch diag: code cache local dual-map probe begin");
+        if (TrySetupIOSLocalDualMap(generated_code_execute_base_,
+                                    generated_code_write_base_)) {
+          generated_code_uses_vm_remap_fallback_ = true;
+          generated_code_uses_mprotect_flip_ = false;
+        } else {
+          generated_code_execute_base_ = nullptr;
+          generated_code_write_base_ = nullptr;
+          XELOGW("iOS launch diag: code cache local dual-map unavailable");
+        }
+      }
+
+      // Some jailbreak/debugger configurations genuinely permit direct RWX
+      // mappings. Accept that path only if the kernel reports the resulting
+      // mapping as both writable and executable — mmap success alone is not
+      // sufficient on iOS.
       if (!generated_code_execute_base_ && !generated_code_write_base_ &&
           !IOSHasTXM()) {
         XELOGW("iOS launch diag: code cache direct RWX mmap probe begin");
@@ -374,12 +391,29 @@ class CodeCacheBase : public CodeCache {
             nullptr, kGeneratedCodeSize, PROT_READ | PROT_WRITE | PROT_EXEC,
             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
         if (direct_rwx != MAP_FAILED) {
-          generated_code_execute_base_ = direct_rwx;
-          generated_code_write_base_ = direct_rwx;
-          generated_code_uses_mprotect_flip_ = false;
-          XELOGW(
-              "iOS launch diag: code cache direct RWX mapping active ptr={:p}",
-              static_cast<void*>(direct_rwx));
+          size_t query_length = kGeneratedCodeSize;
+          xe::memory::PageAccess query_access =
+              xe::memory::PageAccess::kNoAccess;
+          const bool query_ok =
+              xe::memory::QueryProtect(direct_rwx, query_length, query_access);
+          if (query_ok &&
+              AccessSatisfies(
+                  query_access,
+                  xe::memory::PageAccess::kExecuteReadWrite)) {
+            generated_code_execute_base_ = direct_rwx;
+            generated_code_write_base_ = direct_rwx;
+            generated_code_uses_mprotect_flip_ = false;
+            XELOGW(
+                "iOS launch diag: code cache verified direct RWX active "
+                "ptr={:p}",
+                static_cast<void*>(direct_rwx));
+          } else {
+            XELOGW(
+                "iOS launch diag: direct RWX mmap was downgraded "
+                "query_ok={} access={}",
+                query_ok, static_cast<uint32_t>(query_access));
+            munmap(direct_rwx, kGeneratedCodeSize);
+          }
         } else {
           XELOGW(
               "iOS launch diag: code cache direct RWX mmap denied err={} ({})",
@@ -396,18 +430,18 @@ class CodeCacheBase : public CodeCache {
         generated_code_uses_vm_remap_fallback_ = false;
         generated_code_uses_ios_persistent_mapping_ = false;
 
-        XELOGW("iOS launch diag: code cache RW mmap begin");
-        generated_code_write_base_ = reinterpret_cast<uint8_t*>(
-            mmap(nullptr, kGeneratedCodeSize, PROT_READ | PROT_WRITE,
+        XELOGW("iOS launch diag: code cache RX mmap begin");
+        generated_code_execute_base_ = reinterpret_cast<uint8_t*>(
+            mmap(nullptr, kGeneratedCodeSize, PROT_READ | PROT_EXEC,
                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
-        XELOGW("iOS launch diag: code cache RW mmap returned ptr={:p}",
-               static_cast<void*>(generated_code_write_base_));
-        if (generated_code_write_base_ == MAP_FAILED) {
-          generated_code_write_base_ = nullptr;
+        XELOGW("iOS launch diag: code cache RX mmap returned ptr={:p}",
+               static_cast<void*>(generated_code_execute_base_));
+        if (generated_code_execute_base_ == MAP_FAILED) {
+          generated_code_execute_base_ = nullptr;
           XELOGE("Unable to allocate iOS JIT code cache (RX mapping)");
           return false;
         }
-        generated_code_execute_base_ = generated_code_write_base_;
+        generated_code_write_base_ = generated_code_execute_base_;
         generated_code_uses_mprotect_flip_ = true;
         if (use_txm_broker_path) {
           XELOGI("iOS JIT mprotect-flip fallback active (TXM/broker path)");
@@ -1212,6 +1246,97 @@ class CodeCacheBase : public CodeCache {
     const uint32_t actual_bits = static_cast<uint32_t>(actual);
     const uint32_t desired_bits = static_cast<uint32_t>(desired);
     return (actual_bits & desired_bits) == desired_bits;
+  }
+
+  static bool TrySetupIOSLocalDualMap(uint8_t*& execute_base,
+                                      uint8_t*& write_base) {
+    execute_base = nullptr;
+    write_base = nullptr;
+
+    auto* write = reinterpret_cast<uint8_t*>(
+        mmap(nullptr, kGeneratedCodeSize, PROT_READ | PROT_WRITE,
+             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+    if (write == MAP_FAILED) {
+      XELOGW(
+          "iOS JIT local dual-map: RW source mmap failed err={} ({})", errno,
+          std::strerror(errno));
+      return false;
+    }
+
+    constexpr vm_prot_t kMaxProtect =
+        VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
+    const kern_return_t max_result = vm_protect(
+        mach_task_self(), reinterpret_cast<vm_address_t>(write),
+        kGeneratedCodeSize, TRUE, kMaxProtect);
+    if (max_result != KERN_SUCCESS) {
+      XELOGW("iOS JIT local dual-map: set-max RWX failed kr={}", max_result);
+      munmap(write, kGeneratedCodeSize);
+      return false;
+    }
+
+    const kern_return_t write_result = vm_protect(
+        mach_task_self(), reinterpret_cast<vm_address_t>(write),
+        kGeneratedCodeSize, FALSE, VM_PROT_READ | VM_PROT_WRITE);
+    if (write_result != KERN_SUCCESS) {
+      XELOGW("iOS JIT local dual-map: restore RW failed kr={}", write_result);
+      munmap(write, kGeneratedCodeSize);
+      return false;
+    }
+
+    vm_address_t remap_addr = 0;
+    vm_prot_t cur_prot = 0;
+    vm_prot_t max_prot = 0;
+    const kern_return_t remap_result = vm_remap(
+        mach_task_self(), &remap_addr, kGeneratedCodeSize, 0, VM_FLAGS_ANYWHERE,
+        mach_task_self(), reinterpret_cast<vm_address_t>(write), FALSE,
+        &cur_prot, &max_prot, VM_INHERIT_NONE);
+    if (remap_result != KERN_SUCCESS) {
+      XELOGW("iOS JIT local dual-map: vm_remap failed kr={}", remap_result);
+      munmap(write, kGeneratedCodeSize);
+      return false;
+    }
+
+    const kern_return_t exec_result =
+        vm_protect(mach_task_self(), remap_addr, kGeneratedCodeSize, FALSE,
+                   VM_PROT_READ | VM_PROT_EXECUTE);
+    if (exec_result != KERN_SUCCESS) {
+      XELOGW("iOS JIT local dual-map: RX alias protect failed kr={}",
+             exec_result);
+      vm_deallocate(mach_task_self(), remap_addr, kGeneratedCodeSize);
+      munmap(write, kGeneratedCodeSize);
+      return false;
+    }
+
+    size_t write_query_length = kGeneratedCodeSize;
+    size_t exec_query_length = kGeneratedCodeSize;
+    xe::memory::PageAccess write_access = xe::memory::PageAccess::kNoAccess;
+    xe::memory::PageAccess exec_access = xe::memory::PageAccess::kNoAccess;
+    const bool write_query_ok =
+        xe::memory::QueryProtect(write, write_query_length, write_access);
+    const bool exec_query_ok = xe::memory::QueryProtect(
+        reinterpret_cast<void*>(remap_addr), exec_query_length, exec_access);
+    if (!write_query_ok ||
+        !AccessSatisfies(write_access, xe::memory::PageAccess::kReadWrite) ||
+        !exec_query_ok ||
+        !AccessSatisfies(exec_access,
+                         xe::memory::PageAccess::kExecuteReadOnly)) {
+      XELOGW(
+          "iOS JIT local dual-map: protection verification failed "
+          "write_ok={} write_access={} exec_ok={} exec_access={}",
+          write_query_ok, static_cast<uint32_t>(write_access), exec_query_ok,
+          static_cast<uint32_t>(exec_access));
+      vm_deallocate(mach_task_self(), remap_addr, kGeneratedCodeSize);
+      munmap(write, kGeneratedCodeSize);
+      return false;
+    }
+
+    write_base = write;
+    execute_base = reinterpret_cast<uint8_t*>(remap_addr);
+    XELOGW(
+        "iOS launch diag: code cache local dual-map active execute={:p} "
+        "write={:p}",
+        static_cast<void*>(execute_base), static_cast<void*>(write_base));
+    return true;
   }
 
   static void InvokeUniversalPrepareBreakpoint(uintptr_t aligned_start,
