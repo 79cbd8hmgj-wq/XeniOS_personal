@@ -1332,8 +1332,12 @@ void EmulatorAppIOS::EmulatorThread(const std::filesystem::path& game_path,
   const bool launched_with_game = !game_path.empty();
 
   if (launched_with_game) {
+    XELOGW("iOS launch diag: emulator thread start path='{}' require_cpu_backend={} gpu='{}' apu='{}'",
+           game_path.string(), require_cpu_backend, cvars::gpu, cvars::apu);
+    XELOGW("iOS launch diag: game config begin path='{}'", game_path.string());
     XELOGI("iOS: Loading game config for: {}", game_path.string());
     config::LoadGameConfigForFile(game_path);
+    XELOGW("iOS launch diag: game config complete gpu='{}' apu='{}'", cvars::gpu, cvars::apu);
     app_context().CallInUIThread([this]() {
       ApplyGuestDisplayRefreshCapToWindowFromUIThread(cvars::guest_display_refresh_cap);
     });
@@ -1383,6 +1387,7 @@ void EmulatorAppIOS::EmulatorThread(const std::filesystem::path& game_path,
       emulator_->ShutdownForTitleExitIOS();
     }
 
+    XELOGW("iOS launch diag: Emulator::Setup begin require_cpu_backend={}", require_cpu_backend);
     X_STATUS setup_result =
         emulator_->Setup(window_.get(),
                          nullptr,  // No ImGui drawer on iOS for now.
@@ -1400,7 +1405,10 @@ void EmulatorAppIOS::EmulatorThread(const std::filesystem::path& game_path,
       return;
     }
 
+    XELOGW("iOS launch diag: Emulator::Setup complete require_cpu_backend={}", require_cpu_backend);
+
     if (require_cpu_backend) {
+      XELOGW("iOS launch diag: SetupSubsystems begin");
       X_STATUS subsystem_result = emulator_->SetupSubsystems();
       if (XFAILED(subsystem_result)) {
         XELOGE("iOS: Emulator::SetupSubsystems failed with status {:08X}", subsystem_result);
@@ -1411,9 +1419,12 @@ void EmulatorAppIOS::EmulatorThread(const std::filesystem::path& game_path,
         }
         return;
       }
+      XELOGW("iOS launch diag: SetupSubsystems complete");
     }
 
+    XELOGW("iOS launch diag: MountStandardDrives begin");
     emulator_->MountStandardDrives();
+    XELOGW("iOS launch diag: MountStandardDrives complete");
     if (emulator_->input_system()) {
       if (gameplay_input_blocked_.load(std::memory_order_acquire)) {
         if (!gameplay_input_blocker_applied_.exchange(true, std::memory_order_acq_rel)) {
@@ -1433,6 +1444,8 @@ void EmulatorAppIOS::EmulatorThread(const std::filesystem::path& game_path,
     }
 
     auto* graphics_system = emulator_->graphics_system();
+    XELOGW("iOS launch diag: post-mount graphics_system={} input_system={}",
+           graphics_system != nullptr, emulator_->input_system() != nullptr);
     if (graphics_system) {
       auto* ios_context = &static_cast<ui::IOSWindowedAppContext&>(app_context());
       graphics_system->SetScaledAspectRatioChangedCallback([ios_context](uint32_t, uint32_t) {
@@ -1509,7 +1522,9 @@ void EmulatorAppIOS::EmulatorThread(const std::filesystem::path& game_path,
       emulator_cpu_initialized_.store(false, std::memory_order_release);
     };
 
+    XELOGW("iOS launch diag: LaunchPath begin path='{}'", abs_path.string());
     X_STATUS launch_result = emulator_->LaunchPath(abs_path);
+    XELOGW("iOS launch diag: LaunchPath returned {:08X}", launch_result);
     cvars::launch_module = "";
     cvars::launch_flags = 0;
     cvars::launch_data = "";
@@ -1530,6 +1545,7 @@ void EmulatorAppIOS::EmulatorThread(const std::filesystem::path& game_path,
     }
 
     XELOGI("iOS: Game launched successfully");
+    XELOGW("iOS launch diag: game launched successfully; entering WaitUntilExit");
     emulator_->WaitUntilExit();
     XELOGI("iOS: Game execution finished (exit wait completed)");
 
