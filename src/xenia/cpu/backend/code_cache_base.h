@@ -174,13 +174,25 @@ class CodeCacheBase : public CodeCache {
     generated_code_uses_vm_remap_fallback_ = false;
 #if XE_PLATFORM_IOS && XE_ARCH_ARM64
     generated_code_uses_ios_persistent_mapping_ = false;
+    XELOGW(
+        "iOS launch diag: code cache Initialize begin code_size=0x{:X} "
+        "indirection_size=0x{:X}",
+        static_cast<uint64_t>(kGeneratedCodeSize),
+        static_cast<uint64_t>(kIndirectionTableSize));
 #endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
 
     file_name_ =
         fmt::format("xenia_code_cache_{}", Clock::QueryHostTickCount());
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+    XELOGW("iOS launch diag: code cache backing mapping create begin");
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
     mapping_ = xe::memory::CreateFileMappingHandle(
         file_name_, kGeneratedCodeSize,
         xe::memory::PageAccess::kExecuteReadWrite, false);
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+    XELOGW("iOS launch diag: code cache backing mapping create complete valid={}",
+           mapping_ != xe::memory::kFileMappingHandleInvalid);
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
     if (mapping_ == xe::memory::kFileMappingHandleInvalid) {
       XELOGE("Unable to create code cache mmap");
       return false;
@@ -239,9 +251,16 @@ class CodeCacheBase : public CodeCache {
 
     // Encoded path: OS-chosen allocation, slots hold rel32 + tagged external.
     encoded_indirection_ = true;
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+    XELOGW("iOS launch diag: code cache indirection reserve begin");
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
     indirection_table_base_ = reinterpret_cast<uint8_t*>(xe::memory::AllocFixed(
         nullptr, kIndirectionTableSize, xe::memory::AllocationType::kReserve,
         xe::memory::PageAccess::kReadWrite));
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+    XELOGW("iOS launch diag: code cache indirection reserve complete ptr={:p}",
+           static_cast<void*>(indirection_table_base_));
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
     if (!indirection_table_base_) {
       XELOGE("Unable to reserve indirection table at any address (size=0x{:X})",
              static_cast<uint64_t>(kIndirectionTableSize));
@@ -253,8 +272,14 @@ class CodeCacheBase : public CodeCache {
         indirection_table_actual_base_ -
         static_cast<uintptr_t>(kIndirectionTableBase);
 
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+    XELOGW("iOS launch diag: code cache external indirection allocate begin");
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
     external_indirection_targets_ =
         std::make_unique<uint64_t[]>(kIndirectionExternalCapacity);
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+    XELOGW("iOS launch diag: code cache external indirection allocate complete");
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
     if (!external_indirection_targets_) {
       XELOGE("Unable to allocate external indirection table (entries={})",
              static_cast<uint32_t>(kIndirectionExternalCapacity));
@@ -288,7 +313,12 @@ class CodeCacheBase : public CodeCache {
 #endif
     } else {
 #if XE_PLATFORM_IOS && XE_ARCH_ARM64
+      XELOGW("iOS launch diag: code cache iOS JIT path begin");
       const bool use_txm_broker_path = IOSUseTXMBrokerPath();
+      XELOGW(
+          "iOS launch diag: code cache iOS JIT policy txm={} broker={} "
+          "ios_major={}",
+          IOSHasTXM(), use_txm_broker_path, IOSProductMajorVersion());
       if (use_txm_broker_path) {
         const int ios_major_version = IOSProductMajorVersion();
         if (ios_major_version > 0) {
@@ -339,9 +369,12 @@ class CodeCacheBase : public CodeCache {
         generated_code_uses_vm_remap_fallback_ = false;
         generated_code_uses_ios_persistent_mapping_ = false;
 
+        XELOGW("iOS launch diag: code cache RW mmap begin");
         generated_code_write_base_ = reinterpret_cast<uint8_t*>(
             mmap(nullptr, kGeneratedCodeSize, PROT_READ | PROT_WRITE,
                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+        XELOGW("iOS launch diag: code cache RW mmap returned ptr={:p}",
+               static_cast<void*>(generated_code_write_base_));
         if (generated_code_write_base_ == MAP_FAILED) {
           generated_code_write_base_ = nullptr;
           XELOGE("Unable to allocate iOS JIT code cache (RX mapping)");
@@ -389,7 +422,19 @@ class CodeCacheBase : public CodeCache {
       return false;
     }
 
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+    XELOGW(
+        "iOS launch diag: code cache generated storage ready execute={:p} "
+        "write={:p} mprotect_flip={} persistent={}",
+        static_cast<void*>(generated_code_execute_base_),
+        static_cast<void*>(generated_code_write_base_),
+        generated_code_uses_mprotect_flip_,
+        generated_code_uses_ios_persistent_mapping_);
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
     generated_code_map_.reserve(kMaximumFunctionCount);
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+    XELOGW("iOS launch diag: code cache Initialize complete");
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
     return true;
   }
 
@@ -573,9 +618,21 @@ class CodeCacheBase : public CodeCache {
           function_info);
 
       // Commit memory if needed.
-      EnsureCommitted(high_mark);
-
 #if XE_PLATFORM_IOS && XE_ARCH_ARM64
+      if (!function_info) {
+        XELOGW(
+            "iOS launch diag: host JIT publish commit begin offset=0x{:X} "
+            "span=0x{:X}",
+            static_cast<uint64_t>(generated_code_offset_),
+            static_cast<uint64_t>(write_span_length));
+      }
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
+      EnsureCommitted(high_mark);
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+      if (!function_info) {
+        XELOGW("iOS launch diag: host JIT publish commit complete");
+      }
+
       if (generated_code_uses_mprotect_flip_ &&
           !RegionLockRead(code_write_address, write_span_length)) {
         XELOGE("iOS JIT mprotect flip: failed to lock code range for writes");
@@ -601,8 +658,23 @@ class CodeCacheBase : public CodeCache {
       }
 #endif
 
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+      if (!function_info) {
+        XELOGW(
+            "iOS launch diag: host JIT publish memcpy begin write={:p} "
+            "execute={:p} code_size=0x{:X}",
+            static_cast<void*>(code_write_address),
+            static_cast<void*>(code_execute_address),
+            static_cast<uint64_t>(func_info.code_size.total));
+      }
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
       // Copy code.
       std::memcpy(code_write_address, machine_code, func_info.code_size.total);
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+      if (!function_info) {
+        XELOGW("iOS launch diag: host JIT publish memcpy complete");
+      }
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
 
       // Fill unused tail/unwind gap with arch-specific trap instructions.
       self().FillCode(
@@ -611,8 +683,18 @@ class CodeCacheBase : public CodeCache {
 
       // Platform-specific unwind registration. Must stay inside the JIT
       // write window: on Mac it writes DWARF entries into the cache view.
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+      if (!function_info) {
+        XELOGW("iOS launch diag: host JIT unwind registration begin");
+      }
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
       self().PlaceCode(guest_address, machine_code, func_info,
                        code_execute_address, unwind_reservation);
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+      if (!function_info) {
+        XELOGW("iOS launch diag: host JIT unwind registration complete");
+      }
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
 
 #if XE_PLATFORM_APPLE && !XE_PLATFORM_IOS && XE_ARCH_ARM64
       if (jit_write_toggle) {
@@ -643,10 +725,16 @@ class CodeCacheBase : public CodeCache {
 #endif
 
 #if XE_PLATFORM_IOS && XE_ARCH_ARM64
+      if (!function_info && generated_code_uses_mprotect_flip_) {
+        XELOGW("iOS launch diag: host JIT RX transition begin");
+      }
       if (generated_code_uses_mprotect_flip_ &&
           !RegionSetExec(code_execute_address, write_span_length)) {
         XELOGE("iOS JIT mprotect flip: failed to restore RX after code write");
         assert_always();
+      }
+      if (!function_info) {
+        XELOGW("iOS launch diag: host JIT publish complete");
       }
 #endif
     }
