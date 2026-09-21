@@ -1764,28 +1764,39 @@ bool Emulator::ExceptionCallback(Exception* ex) {
     Pause();
   }
 
-  // Dump information into the log.
+  // Dump information into the log. Faults in helper thunks or JIT page
+  // publication may be inside the code-cache range without belonging to a
+  // registered GuestFunction. Do not turn the original JIT fault into a
+  // secondary null dereference in the crash reporter.
   auto current_thread = kernel::XThread::GetCurrentThread();
-  assert_not_null(current_thread);
-
   auto guest_function = code_cache->LookupFunction(ex->pc());
-  assert_not_null(guest_function);
-
-  auto context = current_thread->thread_state()->context();
 
   std::string crash_msg;
   crash_msg.append("==== CRASH DUMP ====\n");
-  // Fiber-backed guest threads have no host thread, so report 0 for the host id
-  // and avoid null-dereferencing thread() inside the crash handler.
-  crash_msg.append(fmt::format(
-      "Thread ID (Host: 0x{:08X} / Guest: 0x{:08X})\n",
-      current_thread->thread() ? current_thread->thread()->system_id() : 0,
-      current_thread->thread_id()));
-  crash_msg.append(
-      fmt::format("Thread Handle: 0x{:08X}\n", current_thread->handle()));
-  crash_msg.append(
-      fmt::format("PC: 0x{:08X}\n",
-                  guest_function->MapMachineCodeToGuestAddress(ex->pc())));
+  if (current_thread) {
+    // Fiber-backed guest threads have no host thread, so report 0 for the host
+    // id and avoid null-dereferencing thread() inside the crash handler.
+    crash_msg.append(fmt::format(
+        "Thread ID (Host: 0x{:08X} / Guest: 0x{:08X})\n",
+        current_thread->thread() ? current_thread->thread()->system_id() : 0,
+        current_thread->thread_id()));
+    crash_msg.append(
+        fmt::format("Thread Handle: 0x{:08X}\n", current_thread->handle()));
+  } else {
+    crash_msg.append("Thread: unavailable during exception handling\n");
+  }
+  if (guest_function) {
+    crash_msg.append(
+        fmt::format("PC: 0x{:08X}\n",
+                    guest_function->MapMachineCodeToGuestAddress(ex->pc())));
+  } else {
+    crash_msg.append(fmt::format(
+        "Host PC: 0x{:016X} (inside JIT cache, no GuestFunction mapping)\n",
+        ex->pc()));
+  }
+
+  auto context =
+      current_thread ? current_thread->thread_state()->context() : nullptr;
   if (ex->code() == Exception::Code::kAccessViolation) {
     const char* op_str = "unknown";
     if (ex->access_violation_operation() ==
@@ -1800,21 +1811,23 @@ bool Emulator::ExceptionCallback(Exception* ex) {
   } else if (ex->code() == Exception::Code::kIllegalInstruction) {
     crash_msg.append("Illegal Instruction\n");
   }
-  crash_msg.append("Registers:\n");
-  for (int i = 0; i < 32; i++) {
-    crash_msg.append(fmt::format(" r{:<3} = {:016X}\n", i, context->r[i]));
-  }
-  for (int i = 0; i < 32; i++) {
-    crash_msg.append(fmt::format(" f{:<3} = {:016X} = (double){} = (float){}\n",
-                                 i,
-                                 *reinterpret_cast<uint64_t*>(&context->f[i]),
-                                 context->f[i], *(float*)&context->f[i]));
-  }
-  for (int i = 0; i < 128; i++) {
-    crash_msg.append(
-        fmt::format(" v{:<3} = [0x{:08X}, 0x{:08X}, 0x{:08X}, 0x{:08X}]\n", i,
-                    context->v[i].u32[0], context->v[i].u32[1],
-                    context->v[i].u32[2], context->v[i].u32[3]));
+  if (context) {
+    crash_msg.append("Registers:\n");
+    for (int i = 0; i < 32; i++) {
+      crash_msg.append(fmt::format(" r{:<3} = {:016X}\n", i, context->r[i]));
+    }
+    for (int i = 0; i < 32; i++) {
+      crash_msg.append(
+          fmt::format(" f{:<3} = {:016X} = (double){} = (float){}\n", i,
+                      *reinterpret_cast<uint64_t*>(&context->f[i]),
+                      context->f[i], *(float*)&context->f[i]));
+    }
+    for (int i = 0; i < 128; i++) {
+      crash_msg.append(fmt::format(
+          " v{:<3} = [0x{:08X}, 0x{:08X}, 0x{:08X}, 0x{:08X}]\n", i,
+          context->v[i].u32[0], context->v[i].u32[1], context->v[i].u32[2],
+          context->v[i].u32[3]));
+    }
   }
   XELOGE("{}", crash_msg);
   std::string crash_dlg = fmt::format(
@@ -1833,6 +1846,9 @@ bool Emulator::ExceptionCallback(Exception* ex) {
   // Halt the crashed thread without unwinding the rest of the emulator. Host
   // mode suspends self. Fiber mode diverts the resume PC to a halt thunk, since
   // calling Suspend here would yield from inside the exception handler.
+  if (!current_thread) {
+    return false;
+  }
   if (current_thread->fiber()) {
     ex->set_resume_pc(reinterpret_cast<uint64_t>(&HaltCrashedFiberThunk));
     return true;
