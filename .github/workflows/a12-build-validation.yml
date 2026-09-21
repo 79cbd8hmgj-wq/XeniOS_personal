@@ -297,32 +297,11 @@ jobs:
           plutil -lint src/xenia/app/Info_ios.plist
           plutil -lint xenia_ios.entitlements
 
-          converter="third_party/metal-shader-converter/lib_iOS/libmetalirconverter.dylib"
-          test -f "$converter"
-          file "$converter"
-          file "$converter" | grep -q "arm64"
-          xcrun vtool -show-build "$converter" | tee scratch/a12-metalirconverter-vtool.txt
-          grep -Eq 'platform[[:space:]]+IOS' scratch/a12-metalirconverter-vtool.txt
-
-          python3 - scratch/a12-metalirconverter-vtool.txt 14.7 <<'PY'
-          from pathlib import Path
-          import re
-          import sys
-
-          report = Path(sys.argv[1]).read_text()
-          maximum = tuple(int(x) for x in sys.argv[2].split("."))
-          maximum += (0,) * (3 - len(maximum))
-          versions = re.findall(r"\bminos\s+([0-9]+(?:\.[0-9]+){1,2})", report)
-          if not versions:
-              raise SystemExit("Metal Shader Converter dylib has no readable LC_BUILD_VERSION minos")
-          for raw in versions:
-              actual = tuple(int(x) for x in raw.split("."))
-              actual += (0,) * (3 - len(actual))
-              if actual > maximum:
-                  raise SystemExit(
-                      f"Metal Shader Converter dylib requires iOS {raw}, above the A12 validation target 14.7")
-              print(f"Metal Shader Converter dylib: minOS {raw} <= 14.7")
-          PY
+          # Do not trust libmetalirconverter's LC_BUILD_VERSION as proof of
+          # iOS 14 runtime compatibility. The shipped dylib imports libc++
+          # symbols that are absent on iOS 14.7.1 and dyld terminates before
+          # main. iOS 14 validation therefore uses the MoltenVK/Vulkan backend
+          # and verifies below that the converter is neither linked nor packaged.
 
       - name: Preflight iOS 14.7 deployment target
         shell: bash
@@ -358,7 +337,7 @@ jobs:
           # library-only smoke build can miss. The CMake targets also promote
           # Clang's SDK availability diagnostics to errors for first-party iOS
           # and Metal code.
-          for target in zlib-ng xenia-base xenia-ui-ios xenia-gpu-metal xenia-ui-metal xenia-app; do
+          for target in zlib-ng xenia-base xenia-ui-ios xenia-gpu-vulkan xenia-ui-vulkan xenia-ui-metal xenia-app; do
             echo "== compatibility smoke target: $target =="
             xcodebuild \
               -project build-ios-xcode/xenia.xcodeproj \
@@ -505,6 +484,22 @@ jobs:
                 verify_rpath_dependencies "$candidate"
               fi
             done < <(find "$app_bundle/Frameworks" -type f -print0)
+          fi
+
+          # iOS 14 must never load Apple's Metal Shader Converter dylib. Its
+          # libc++ imports are newer than the iOS 14 runtime even though the
+          # dylib advertises an older LC_BUILD_VERSION deployment target.
+          if otool -L "$main_exe" | grep -q 'libmetalirconverter\.dylib'; then
+            echo "iOS 14 app still links libmetalirconverter.dylib" >&2
+            exit 1
+          fi
+          if [ -e "$app_bundle/Frameworks/libmetalirconverter.dylib" ]; then
+            echo "iOS 14 app still packages libmetalirconverter.dylib" >&2
+            exit 1
+          fi
+          if [ -e "$app_bundle/Frameworks/libdxilconv.dylib" ]; then
+            echo "iOS 14 app unexpectedly packages Metal-only libdxilconv.dylib" >&2
+            exit 1
           fi
 
           plutil -lint "$app_bundle/Info.plist"

@@ -42,6 +42,29 @@ if(XE_PLATFORM_IOS)
     XBYAK_NO_OP_NAMES
     XBYAK_ENABLE_OMITTED_OPERAND
   )
+
+  # Apple's iOS libmetalirconverter is not runtime-compatible with the iOS
+  # 14 libc++ shipped on A12 devices. Keep the native Metal Shader Converter
+  # backend out of deployment targets below iOS 17 so dyld never loads it.
+  set(_xe_ios_metal_backend_enabled ON)
+  if(CMAKE_OSX_DEPLOYMENT_TARGET AND
+     CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "17.0")
+    set(_xe_ios_metal_backend_enabled OFF)
+  endif()
+  if(_xe_ios_metal_backend_enabled)
+    target_compile_definitions(xenia-app PRIVATE
+      XE_IOS_METAL_BACKEND_ENABLED=1
+    )
+    target_link_libraries(xenia-app PRIVATE
+      xenia-gpu-metal
+    )
+  elseif(NOT XENIA_ENABLE_IOS_MOLTENVK)
+    message(FATAL_ERROR
+      "iOS deployment targets below 17 require XENIA_ENABLE_IOS_MOLTENVK=ON")
+  else()
+    message(STATUS
+      "iOS Metal Shader Converter backend disabled below iOS 17; using MoltenVK/Vulkan")
+  endif()
   target_link_libraries(xenia-app PRIVATE
     xenia-apu
     xenia-apu-nop
@@ -51,7 +74,6 @@ if(XE_PLATFORM_IOS)
     xenia-cpu
     xenia-cpu-backend-a64
     xenia-gpu
-    xenia-gpu-metal
     xenia-helper-sdl
     xenia-hid
     xenia-hid-nop
@@ -102,30 +124,32 @@ if(XE_PLATFORM_IOS)
     "-Wl,-rpath,@loader_path/Frameworks"
   )
   set(_xe_ios_embedded_dylibs)
-  foreach(_xe_app_dylib xenia-third-party-metal-shader-converter
-                        xenia-third-party-dxilconv)
-    if(TARGET ${_xe_app_dylib})
-      if(XCODE)
-        get_target_property(_xe_app_dylib_path ${_xe_app_dylib}
-                            IMPORTED_LOCATION_RELEASE)
-        if(NOT _xe_app_dylib_path)
+  if(_xe_ios_metal_backend_enabled)
+    foreach(_xe_app_dylib xenia-third-party-metal-shader-converter
+                          xenia-third-party-dxilconv)
+      if(TARGET ${_xe_app_dylib})
+        if(XCODE)
           get_target_property(_xe_app_dylib_path ${_xe_app_dylib}
-                              IMPORTED_LOCATION)
+                              IMPORTED_LOCATION_RELEASE)
+          if(NOT _xe_app_dylib_path)
+            get_target_property(_xe_app_dylib_path ${_xe_app_dylib}
+                                IMPORTED_LOCATION)
+          endif()
+          if(_xe_app_dylib_path)
+            list(APPEND _xe_ios_embedded_dylibs "${_xe_app_dylib_path}")
+          endif()
+        else()
+          add_custom_command(TARGET xenia-app POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E make_directory
+                    "$<TARGET_BUNDLE_DIR:xenia-app>/Frameworks"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "$<TARGET_FILE:${_xe_app_dylib}>"
+                    "$<TARGET_BUNDLE_DIR:xenia-app>/Frameworks/$<TARGET_FILE_NAME:${_xe_app_dylib}>"
+            VERBATIM)
         endif()
-        if(_xe_app_dylib_path)
-          list(APPEND _xe_ios_embedded_dylibs "${_xe_app_dylib_path}")
-        endif()
-      else()
-        add_custom_command(TARGET xenia-app POST_BUILD
-          COMMAND "${CMAKE_COMMAND}" -E make_directory
-                  "$<TARGET_BUNDLE_DIR:xenia-app>/Frameworks"
-          COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                  "$<TARGET_FILE:${_xe_app_dylib}>"
-                  "$<TARGET_BUNDLE_DIR:xenia-app>/Frameworks/$<TARGET_FILE_NAME:${_xe_app_dylib}>"
-          VERBATIM)
       endif()
-    endif()
-  endforeach()
+    endforeach()
+  endif()
   if(XCODE AND _xe_ios_embedded_dylibs)
     set_target_properties(xenia-app PROPERTIES
       XCODE_EMBED_FRAMEWORKS "${_xe_ios_embedded_dylibs}"

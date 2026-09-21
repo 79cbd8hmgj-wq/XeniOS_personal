@@ -44,7 +44,9 @@
 #include "xenia/ui/windowed_app.h"
 
 // Graphics system.
+#if defined(XE_IOS_METAL_BACKEND_ENABLED)
 #include "xenia/gpu/metal/metal_graphics_system.h"
+#endif
 #if defined(XE_IOS_MOLTENVK_ENABLED)
 #include "xenia/gpu/vulkan/vulkan_graphics_system.h"
 #endif
@@ -80,7 +82,11 @@ DEFINE_path(cache_root, "",
             "root will be used.",
             "Storage");
 DEFINE_string(apu, "sdl", "Audio system. Use: [sdl, nop]", "APU");
+#if defined(XE_IOS_MOLTENVK_ENABLED) && !defined(XE_IOS_METAL_BACKEND_ENABLED)
+DEFINE_string(gpu, "vulkan", "Graphics system. Use: [vulkan]", "GPU");
+#else
 DEFINE_string(gpu, "metal", "Graphics system. Use: [metal, vulkan]", "GPU");
+#endif
 DEFINE_bool(mount_scratch, false, "Enable scratch mount", "Storage");
 DEFINE_bool(mount_cache, true, "Enable cache mount", "Storage");
 DEFINE_bool(mount_memory_unit, false, "Enable memory unit (MU) mount", "Storage");
@@ -1543,10 +1549,22 @@ std::unique_ptr<gpu::GraphicsSystem> EmulatorAppIOS::CreateGraphicsSystem() {
     return std::make_unique<gpu::vulkan::VulkanGraphicsSystem>();
   }
 #endif
-  if (gpu_implementation_name != "metal") {
-    XELOGW("iOS: unsupported GPU backend '{}', falling back to Metal", gpu_implementation_name);
+#if defined(XE_IOS_METAL_BACKEND_ENABLED)
+  if (gpu_implementation_name == "metal") {
+    return std::make_unique<gpu::metal::MetalGraphicsSystem>();
   }
+#endif
+#if defined(XE_IOS_MOLTENVK_ENABLED)
+  XELOGW("iOS: GPU backend '{}' is unavailable on this deployment target; falling back to Vulkan",
+         gpu_implementation_name);
+  return std::make_unique<gpu::vulkan::VulkanGraphicsSystem>();
+#elif defined(XE_IOS_METAL_BACKEND_ENABLED)
+  XELOGW("iOS: unsupported GPU backend '{}', falling back to Metal", gpu_implementation_name);
   return std::make_unique<gpu::metal::MetalGraphicsSystem>();
+#else
+  XELOGE("iOS: no graphics backend is available");
+  return nullptr;
+#endif
 }
 
 std::vector<std::unique_ptr<hid::InputDriver>> EmulatorAppIOS::CreateInputDrivers(
