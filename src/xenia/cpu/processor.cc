@@ -106,6 +106,8 @@ Processor::~Processor() {
 
 bool Processor::Setup(std::unique_ptr<backend::Backend> backend) {
 #if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: Processor::Setup begin backend={}",
+         backend != nullptr);
   ClearTitleStopRequestIOS();
 #endif  // XE_PLATFORM_IOS
 
@@ -127,14 +129,33 @@ bool Processor::Setup(std::unique_ptr<backend::Backend> backend) {
   }
 
   if (!backend) {
+#if XE_PLATFORM_IOS
+    XELOGE("iOS launch diag: Processor::Setup missing backend");
+#endif  // XE_PLATFORM_IOS
     return false;
   }
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: Processor::Setup backend initialize begin");
+#endif  // XE_PLATFORM_IOS
   if (!backend->Initialize(this)) {
+#if XE_PLATFORM_IOS
+    XELOGE("iOS launch diag: Processor::Setup backend initialize failed");
+#endif  // XE_PLATFORM_IOS
     return false;
   }
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: Processor::Setup backend initialize complete");
+  XELOGW("iOS launch diag: Processor::Setup frontend initialize begin");
+#endif  // XE_PLATFORM_IOS
   if (!frontend->Initialize()) {
+#if XE_PLATFORM_IOS
+    XELOGE("iOS launch diag: Processor::Setup frontend initialize failed");
+#endif  // XE_PLATFORM_IOS
     return false;
   }
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: Processor::Setup frontend initialize complete");
+#endif  // XE_PLATFORM_IOS
 
   backend_ = std::move(backend);
   frontend_ = std::move(frontend);
