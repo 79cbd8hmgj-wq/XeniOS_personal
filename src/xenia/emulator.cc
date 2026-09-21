@@ -1823,10 +1823,10 @@ bool Emulator::ExceptionCallback(Exception* ex) {
                       context->f[i], *(float*)&context->f[i]));
     }
     for (int i = 0; i < 128; i++) {
-      crash_msg.append(fmt::format(
-          " v{:<3} = [0x{:08X}, 0x{:08X}, 0x{:08X}, 0x{:08X}]\n", i,
-          context->v[i].u32[0], context->v[i].u32[1], context->v[i].u32[2],
-          context->v[i].u32[3]));
+      crash_msg.append(
+          fmt::format(" v{:<3} = [0x{:08X}, 0x{:08X}, 0x{:08X}, 0x{:08X}]\n", i,
+                      context->v[i].u32[0], context->v[i].u32[1],
+                      context->v[i].u32[2], context->v[i].u32[3]));
     }
   }
   XELOGE("{}", crash_msg);
