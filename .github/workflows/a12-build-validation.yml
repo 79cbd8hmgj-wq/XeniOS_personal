@@ -509,6 +509,9 @@ jobs:
           /usr/libexec/PlistBuddy -c \
             'Print :com.apple.developer.kernel.increased-memory-limit' \
             scratch/a12-signed-entitlements.plist | grep -qx 'true'
+          /usr/libexec/PlistBuddy -c \
+            'Print :com.apple.developer.kernel.extended-virtual-addressing' \
+            scratch/a12-signed-entitlements.plist | grep -qx 'true'
           codesign -dv --verbose=2 "$app_bundle"
 
       - name: Upload validation IPA
