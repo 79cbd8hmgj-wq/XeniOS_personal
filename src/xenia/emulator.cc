@@ -363,7 +363,8 @@ X_STATUS Emulator::Setup(
   }
 
 #if XE_PLATFORM_IOS
-  XELOGW("iOS launch diag: Emulator::Setup processor begin cpu='{}'", cvars::cpu);
+  XELOGW("iOS launch diag: Emulator::Setup processor begin cpu='{}'",
+         cvars::cpu);
 #endif
   XELOGI("{}: Initializing Processor...", __func__);
   // Initialize the CPU.
@@ -419,8 +420,11 @@ X_STATUS Emulator::Setup(
   }
 
 #if XE_PLATFORM_IOS
-  XELOGW("iOS launch diag: Emulator::Setup HID stage complete input_system={} drivers={}",
-         input_system_ != nullptr, input_system_ ? input_system_->driver_count() : 0);
+  XELOGW(
+      "iOS launch diag: Emulator::Setup HID stage complete input_system={} "
+      "drivers={}",
+      input_system_ != nullptr,
+      input_system_ ? input_system_->driver_count() : 0);
 #endif
 
   // Add inputSystem to UI (if imgui is enabled)
@@ -481,7 +485,8 @@ X_STATUS Emulator::SetupSubsystems() {
 
   if (graphics_system_) {
 #if XE_PLATFORM_IOS
-    XELOGW("iOS launch diag: graphics_system setup begin backend='{}'", cvars::gpu);
+    XELOGW("iOS launch diag: graphics_system setup begin backend='{}'",
+           cvars::gpu);
 #endif
     XELOGI("{}: Starting graphics_system...", __func__);
     result = graphics_system_->Setup(
@@ -499,7 +504,8 @@ X_STATUS Emulator::SetupSubsystems() {
 
   if (audio_system_) {
 #if XE_PLATFORM_IOS
-    XELOGW("iOS launch diag: audio_system setup begin backend='{}'", cvars::apu);
+    XELOGW("iOS launch diag: audio_system setup begin backend='{}'",
+           cvars::apu);
 #endif
     XELOGI("{}: Starting audio_system...", __func__);
     result = audio_system_->Setup(kernel_state_.get());
@@ -623,7 +629,8 @@ void Emulator::SetPersistentEmulatorFlags(uint64_t new_flags) {
 X_STATUS Emulator::MountPath(const std::filesystem::path& path,
                              const std::string_view mount_path) {
 #if XE_PLATFORM_IOS
-  XELOGW("iOS launch diag: MountPath begin path='{}' mount='{}'", path.string(), mount_path);
+  XELOGW("iOS launch diag: MountPath begin path='{}' mount='{}'", path.string(),
+         mount_path);
 #endif
   auto device = CreateVfsDevice(path, mount_path);
   if (!device || !device->Initialize()) {
@@ -1033,7 +1040,10 @@ X_STATUS Emulator::ProcessContentPackageHeader(
     installation_info.installation_state_ = InstallState::failed;
     installation_info.installation_result_ = X_STATUS_INVALID_PARAMETER;
     installation_info.installation_error_message_ = "Invalid Package Type!";
-    XELOGE("ProcessContentPackageHeader: invalid or unreadable XContent package: {}", path);
+    XELOGE(
+        "ProcessContentPackageHeader: invalid or unreadable XContent package: "
+        "{}",
+        path);
     return X_STATUS_INVALID_PARAMETER;
   }
 
@@ -1103,7 +1113,8 @@ X_STATUS Emulator::InstallContentPackage(
     installation_info.installation_error_message_ =
         "Device initialization failed!";
     installation_info.installation_result_ = X_STATUS_ACCESS_DENIED;
-    XELOGE("InstallContentPackage: XContent device initialization failed: {}", path);
+    XELOGE("InstallContentPackage: XContent device initialization failed: {}",
+           path);
     return X_STATUS_INVALID_PARAMETER;
   }
 
@@ -1988,7 +1999,8 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   auto xam = kernel_state()->GetKernelModule<kernel::xam::XamModule>("xam.xex");
 
 #if XE_PLATFORM_IOS
-  XELOGW("iOS launch diag: CompleteLaunch LoadUserModule begin module='{}'", module_path);
+  XELOGW("iOS launch diag: CompleteLaunch LoadUserModule begin module='{}'",
+         module_path);
 #endif
   XELOGI("Loading module {}", module_path);
   auto module = kernel_state_->LoadUserModule(module_path);
@@ -2003,8 +2015,9 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   }
 
 #if XE_PLATFORM_IOS
-  XELOGW("iOS launch diag: CompleteLaunch LoadUserModule complete executable={}",
-         module->is_executable());
+  XELOGW(
+      "iOS launch diag: CompleteLaunch LoadUserModule complete executable={}",
+      module->is_executable());
 #endif
   if (!module->is_executable()) {
     kernel_state_->UnloadUserModule(module, false);
@@ -2225,8 +2238,9 @@ X_STATUS Emulator::CompleteLaunch(const std::filesystem::path& path,
   }
   main_thread_ = main_thread;
 #if XE_PLATFORM_IOS
-  XELOGW("iOS launch diag: CompleteLaunch LaunchModule complete title_id={:08X}",
-         title_id_.value_or(0));
+  XELOGW(
+      "iOS launch diag: CompleteLaunch LaunchModule complete title_id={:08X}",
+      title_id_.value_or(0));
 #endif
   on_launch(title_id_.value(), title_name_);
 
