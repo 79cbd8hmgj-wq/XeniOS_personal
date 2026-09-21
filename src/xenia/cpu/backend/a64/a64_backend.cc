@@ -1048,20 +1048,20 @@ bool A64Backend::Initialize(Processor* processor) {
 
   host_to_guest_thunk_ = thunk_emitter.EmitHostToGuestThunk();
 #if XE_PLATFORM_IOS
-  XELOGW("iOS launch diag: A64 host-to-guest thunk complete ptr={:p}",
-         reinterpret_cast<void*>(host_to_guest_thunk_));
+  XELOGW("iOS launch diag: A64 host-to-guest thunk complete ptr=0x{:X}",
+         reinterpret_cast<uintptr_t>(host_to_guest_thunk_));
   XELOGW("iOS launch diag: A64 guest-to-host thunk begin");
 #endif  // XE_PLATFORM_IOS
   guest_to_host_thunk_ = thunk_emitter.EmitGuestToHostThunk();
 #if XE_PLATFORM_IOS
-  XELOGW("iOS launch diag: A64 guest-to-host thunk complete ptr={:p}",
-         reinterpret_cast<void*>(guest_to_host_thunk_));
+  XELOGW("iOS launch diag: A64 guest-to-host thunk complete ptr=0x{:X}",
+         reinterpret_cast<uintptr_t>(guest_to_host_thunk_));
   XELOGW("iOS launch diag: A64 resolve thunk begin");
 #endif  // XE_PLATFORM_IOS
   resolve_function_thunk_ = thunk_emitter.EmitResolveFunctionThunk();
 #if XE_PLATFORM_IOS
-  XELOGW("iOS launch diag: A64 resolve thunk complete ptr={:p}",
-         reinterpret_cast<void*>(resolve_function_thunk_));
+  XELOGW("iOS launch diag: A64 resolve thunk complete ptr=0x{:X}",
+         reinterpret_cast<uintptr_t>(resolve_function_thunk_));
 #endif  // XE_PLATFORM_IOS
 
   if (!host_to_guest_thunk_ || !guest_to_host_thunk_ ||
