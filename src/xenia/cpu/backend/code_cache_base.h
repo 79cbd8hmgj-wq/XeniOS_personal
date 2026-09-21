@@ -360,6 +360,32 @@ class CodeCacheBase : public CodeCache {
         }
       }
 
+      // Older non-TXM iOS releases may permit direct anonymous RWX mappings
+      // in environments that allow JIT, while rejecting later RW->RX
+      // transitions on the same mapping. The A64 guest-trampoline pool already
+      // relies on this capability. Prefer the direct mapping when available,
+      // but keep the existing W^X flip path as a fallback.
+      if (!generated_code_execute_base_ && !generated_code_write_base_ &&
+          !IOSHasTXM()) {
+        XELOGW("iOS launch diag: code cache direct RWX mmap probe begin");
+        auto* direct_rwx = reinterpret_cast<uint8_t*>(
+            mmap(nullptr, kGeneratedCodeSize,
+                 PROT_READ | PROT_WRITE | PROT_EXEC,
+                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+        if (direct_rwx != MAP_FAILED) {
+          generated_code_execute_base_ = direct_rwx;
+          generated_code_write_base_ = direct_rwx;
+          generated_code_uses_mprotect_flip_ = false;
+          XELOGW(
+              "iOS launch diag: code cache direct RWX mapping active ptr={:p}",
+              static_cast<void*>(direct_rwx));
+        } else {
+          XELOGW(
+              "iOS launch diag: code cache direct RWX mmap denied err={} ({})",
+              errno, std::strerror(errno));
+        }
+      }
+
       if (!generated_code_execute_base_ || !generated_code_write_base_) {
         if (generated_code_execute_base_) {
           munmap(generated_code_execute_base_, kGeneratedCodeSize);
