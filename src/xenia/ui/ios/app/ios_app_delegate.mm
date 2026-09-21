@@ -282,9 +282,18 @@ void LogIOSStartupDiagnostics() {
 
   [vc refreshImportedGames];
   [vc refreshSignedInProfileUI];
+
+  // Keep first launch UI-only. Starting profile services here immediately
+  // enters Emulator::Setup(), which reserves/maps the full Xbox 360 guest
+  // address space and installs MMIO handlers. On constrained iOS devices this
+  // can terminate the process before the launcher has a chance to remain
+  // visible or leave useful diagnostics. Profile services already have an
+  // explicit prepare callback and game launches initialize the emulator on
+  // demand, so defer this work until it is actually requested.
   if (vc.appContext) {
-    vc.statusLabel.text = @"Initializing profile services...";
-    vc.appContext->LaunchGame(std::string());
+    vc.statusLabel.text = @"";
+    XELOGI("iOS: Initial launcher ready; profile services deferred until requested");
+    xe::FlushLog();
   }
 
   if (launch_url) {
