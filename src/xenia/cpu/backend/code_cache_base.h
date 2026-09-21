@@ -397,9 +397,8 @@ class CodeCacheBase : public CodeCache {
           const bool query_ok =
               xe::memory::QueryProtect(direct_rwx, query_length, query_access);
           if (query_ok &&
-              AccessSatisfies(
-                  query_access,
-                  xe::memory::PageAccess::kExecuteReadWrite)) {
+              AccessSatisfies(query_access,
+                              xe::memory::PageAccess::kExecuteReadWrite)) {
             generated_code_execute_base_ = direct_rwx;
             generated_code_write_base_ = direct_rwx;
             generated_code_uses_mprotect_flip_ = false;
@@ -1257,26 +1256,25 @@ class CodeCacheBase : public CodeCache {
         mmap(nullptr, kGeneratedCodeSize, PROT_READ | PROT_WRITE,
              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
     if (write == MAP_FAILED) {
-      XELOGW(
-          "iOS JIT local dual-map: RW source mmap failed err={} ({})", errno,
-          std::strerror(errno));
+      XELOGW("iOS JIT local dual-map: RW source mmap failed err={} ({})", errno,
+             std::strerror(errno));
       return false;
     }
 
     constexpr vm_prot_t kMaxProtect =
         VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
-    const kern_return_t max_result = vm_protect(
-        mach_task_self(), reinterpret_cast<vm_address_t>(write),
-        kGeneratedCodeSize, TRUE, kMaxProtect);
+    const kern_return_t max_result =
+        vm_protect(mach_task_self(), reinterpret_cast<vm_address_t>(write),
+                   kGeneratedCodeSize, TRUE, kMaxProtect);
     if (max_result != KERN_SUCCESS) {
       XELOGW("iOS JIT local dual-map: set-max RWX failed kr={}", max_result);
       munmap(write, kGeneratedCodeSize);
       return false;
     }
 
-    const kern_return_t write_result = vm_protect(
-        mach_task_self(), reinterpret_cast<vm_address_t>(write),
-        kGeneratedCodeSize, FALSE, VM_PROT_READ | VM_PROT_WRITE);
+    const kern_return_t write_result =
+        vm_protect(mach_task_self(), reinterpret_cast<vm_address_t>(write),
+                   kGeneratedCodeSize, FALSE, VM_PROT_READ | VM_PROT_WRITE);
     if (write_result != KERN_SUCCESS) {
       XELOGW("iOS JIT local dual-map: restore RW failed kr={}", write_result);
       munmap(write, kGeneratedCodeSize);
