@@ -10,13 +10,13 @@
 #include <cfenv>
 #include <cmath>
 #include <cstring>
-#if XE_PLATFORM_APPLE
-#include <sys/sysctl.h>
-#endif
 
 #include "xenia/base/cvar.h"
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
+#if XE_PLATFORM_APPLE
+#include <sys/sysctl.h>
+#endif
 #define XBYAK_NO_OP_NAMES
 #include "third_party/xbyak_aarch64/xbyak_aarch64/xbyak_aarch64.h"
 #include "third_party/xbyak_aarch64/xbyak_aarch64/xbyak_aarch64_util.h"
