@@ -111,22 +111,34 @@ class CodeCacheBase : public CodeCache {
       xe::memory::DeallocFixed(indirection_table_base_, kIndirectionTableSize,
                                xe::memory::DeallocationType::kRelease);
     }
-    if (mapping_ != xe::memory::kFileMappingHandleInvalid) {
 #if XE_PLATFORM_IOS && XE_ARCH_ARM64
-      if (!generated_code_uses_ios_persistent_mapping_) {
-#endif
-        if (generated_code_write_base_ &&
-            generated_code_write_base_ != generated_code_execute_base_) {
-          xe::memory::UnmapFileView(mapping_, generated_code_write_base_,
-                                    kGeneratedCodeSize);
-        }
-        if (generated_code_execute_base_) {
-          xe::memory::UnmapFileView(mapping_, generated_code_execute_base_,
-                                    kGeneratedCodeSize);
-        }
-#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+    // iOS ARM64 JIT storage is anonymous mmap/vm_remap memory, not a
+    // file-backed mapping. Release those views directly unless they belong to
+    // the intentionally persistent TXM mapping reused across Setup cycles.
+    if (!generated_code_uses_ios_persistent_mapping_) {
+      if (generated_code_write_base_ &&
+          generated_code_write_base_ != generated_code_execute_base_) {
+        munmap(generated_code_write_base_, kGeneratedCodeSize);
       }
-#endif
+      if (generated_code_execute_base_) {
+        munmap(generated_code_execute_base_, kGeneratedCodeSize);
+      }
+      generated_code_write_base_ = nullptr;
+      generated_code_execute_base_ = nullptr;
+    }
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
+    if (mapping_ != xe::memory::kFileMappingHandleInvalid) {
+#if !(XE_PLATFORM_IOS && XE_ARCH_ARM64)
+      if (generated_code_write_base_ &&
+          generated_code_write_base_ != generated_code_execute_base_) {
+        xe::memory::UnmapFileView(mapping_, generated_code_write_base_,
+                                  kGeneratedCodeSize);
+      }
+      if (generated_code_execute_base_) {
+        xe::memory::UnmapFileView(mapping_, generated_code_execute_base_,
+                                  kGeneratedCodeSize);
+      }
+#endif  // !(XE_PLATFORM_IOS && XE_ARCH_ARM64)
       xe::memory::CloseFileMappingHandle(mapping_, file_name_);
       mapping_ = xe::memory::kFileMappingHandleInvalid;
     }
@@ -184,20 +196,23 @@ class CodeCacheBase : public CodeCache {
     file_name_ =
         fmt::format("xenia_code_cache_{}", Clock::QueryHostTickCount());
 #if XE_PLATFORM_IOS && XE_ARCH_ARM64
-    XELOGW("iOS launch diag: code cache backing mapping create begin");
-#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
+    // All iOS ARM64 JIT storage paths below use anonymous mmap/vm_remap
+    // allocations. Creating a large temporary executable backing file here is
+    // redundant, and on iOS 14 it can terminate the process before the actual
+    // JIT mapping strategy is reached.
+    mapping_ = xe::memory::kFileMappingHandleInvalid;
+    XELOGW(
+        "iOS launch diag: code cache file backing skipped; using anonymous "
+        "JIT storage");
+#else
     mapping_ = xe::memory::CreateFileMappingHandle(
         file_name_, kGeneratedCodeSize,
         xe::memory::PageAccess::kExecuteReadWrite, false);
-#if XE_PLATFORM_IOS && XE_ARCH_ARM64
-    XELOGW(
-        "iOS launch diag: code cache backing mapping create complete valid={}",
-        mapping_ != xe::memory::kFileMappingHandleInvalid);
-#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
     if (mapping_ == xe::memory::kFileMappingHandleInvalid) {
       XELOGE("Unable to create code cache mmap");
       return false;
     }
+#endif  // XE_PLATFORM_IOS && XE_ARCH_ARM64
 
     const bool wx_preferred = xe::memory::IsWritableExecutableMemoryPreferred();
 
