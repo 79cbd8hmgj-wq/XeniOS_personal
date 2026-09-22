@@ -92,7 +92,17 @@ A64Emitter::A64Emitter(A64Backend* backend, XbyakA64Allocator* allocator)
       backend_(backend),
       code_cache_(backend->code_cache()),
       allocator_(allocator),
-      feature_flags_(arm64::GetFeatureFlags()) {}
+      feature_flags_(0) {
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64Emitter staging buffer construct complete");
+  XELOGW("iOS launch diag: A64Emitter feature probe begin");
+#endif  // XE_PLATFORM_IOS
+  feature_flags_ = arm64::GetFeatureFlags();
+#if XE_PLATFORM_IOS
+  XELOGW("iOS launch diag: A64Emitter feature probe complete flags=0x{:X}",
+         feature_flags_);
+#endif  // XE_PLATFORM_IOS
+}
 
 A64Emitter::~A64Emitter() = default;
 
