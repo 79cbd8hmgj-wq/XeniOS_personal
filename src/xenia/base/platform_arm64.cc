@@ -10,8 +10,12 @@
 #include <cfenv>
 #include <cmath>
 #include <cstring>
+#if XE_PLATFORM_APPLE
+#include <sys/sysctl.h>
+#endif
 
 #include "xenia/base/cvar.h"
+#include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 #define XBYAK_NO_OP_NAMES
 #include "third_party/xbyak_aarch64/xbyak_aarch64/xbyak_aarch64.h"
@@ -39,6 +43,26 @@ XE_NOINLINE
 void InitFeatureFlags() {
   uint64_t feature_flags_ = 0U;
   {
+#if XE_PLATFORM_IOS
+    // Xbyak's Apple CPU detector throws if any of several optional sysctl
+    // names are unavailable. Older iOS versions don't necessarily expose
+    // newer keys (for example FEAT_JSCVT), which can terminate startup even
+    // though Xenia only needs the LSE/atomics result here. Probe that one
+    // capability directly and treat an unavailable key as "not supported".
+    if ((cvars::a64_extension_mask & kA64EmitLSE) == kA64EmitLSE) {
+      int atomic_supported = 0;
+      size_t atomic_supported_size = sizeof(atomic_supported);
+      const int atomic_result =
+          sysctlbyname("hw.optional.armv8_1_atomics", &atomic_supported,
+                       &atomic_supported_size, nullptr, 0);
+      if (atomic_result == 0 && atomic_supported != 0) {
+        feature_flags_ |= kA64EmitLSE;
+      }
+      XELOGW(
+          "iOS launch diag: A64 feature probe LSE result={} supported={}",
+          atomic_result, atomic_supported != 0);
+    }
+#else
     Xbyak_aarch64::util::Cpu cpu_;
 #define TEST_EMIT_FEATURE(emit, ext)                \
   if ((cvars::a64_extension_mask & emit) == emit) { \
@@ -47,6 +71,7 @@ void InitFeatureFlags() {
     TEST_EMIT_FEATURE(kA64EmitLSE,
                       Xbyak_aarch64::util::XBYAK_AARCH64_HWCAP_ATOMIC);
 #undef TEST_EMIT_FEATURE
+#endif  // XE_PLATFORM_IOS
   }
 
   // Detect whether FPCR.FZ flushes denormal float32 inputs to zero.
