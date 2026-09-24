@@ -1785,10 +1785,10 @@ bool Emulator::ExceptionCallback(Exception* ex) {
   } else {
     crash_msg.append("Thread: unavailable during exception handling\n");
   }
+  uint32_t guest_pc = 0;
   if (guest_function) {
-    crash_msg.append(
-        fmt::format("PC: 0x{:08X}\n",
-                    guest_function->MapMachineCodeToGuestAddress(ex->pc())));
+    guest_pc = guest_function->MapMachineCodeToGuestAddress(ex->pc());
+    crash_msg.append(fmt::format("PC: 0x{:08X}\n", guest_pc));
   } else {
     crash_msg.append(fmt::format(
         "Host PC: 0x{:016X} (inside JIT cache, no GuestFunction mapping)\n",
@@ -1797,6 +1797,16 @@ bool Emulator::ExceptionCallback(Exception* ex) {
 
   auto context =
       current_thread ? current_thread->thread_state()->context() : nullptr;
+#if XE_PLATFORM_IOS && XE_ARCH_ARM64
+  if (guest_pc) {
+    // The host instruction is safe to inspect here because ex->pc() has
+    // already been established to be inside the executable JIT code cache.
+    const uint32_t host_instruction =
+        *reinterpret_cast<const uint32_t*>(ex->pc());
+    crash_msg.append(
+        fmt::format("Host A64 instruction: 0x{:08X}\n", host_instruction));
+  }
+#endif
   if (ex->code() == Exception::Code::kAccessViolation) {
     const char* op_str = "unknown";
     if (ex->access_violation_operation() ==
@@ -1808,6 +1818,54 @@ bool Emulator::ExceptionCallback(Exception* ex) {
     }
     crash_msg.append(fmt::format("Access Violation: {} at 0x{:016X}\n", op_str,
                                  ex->fault_address()));
+#if XE_PLATFORM_IOS
+    // Resolve faults inside the 4 GiB virtual guest window back to the guest
+    // address and allocator metadata. In particular, host addresses such as
+    // membase + 0xA0000004 are expected translations of Xbox physical aliases,
+    // not automatically malformed 64-bit effective addresses.
+    const uint64_t virtual_membase =
+        reinterpret_cast<uint64_t>(memory_->virtual_membase());
+    const uint64_t physical_membase =
+        reinterpret_cast<uint64_t>(memory_->physical_membase());
+    if (ex->fault_address() >= virtual_membase &&
+        ex->fault_address() < physical_membase) {
+      const uint32_t fault_guest_address = memory_->HostToGuestVirtual(
+          reinterpret_cast<void*>(ex->fault_address()));
+      BaseHeap* fault_heap = memory_->LookupHeap(fault_guest_address);
+      crash_msg.append(fmt::format(
+          "iOS memory fault diag: membase=0x{:016X} guest=0x{:08X}\n",
+          virtual_membase, fault_guest_address));
+      if (fault_heap) {
+        crash_msg.append(fmt::format(
+            "  heap base=0x{:08X} size=0x{:08X} page=0x{:X} "
+            "host_offset=0x{:X} type={}\n",
+            fault_heap->heap_base(), fault_heap->heap_size(),
+            fault_heap->page_size(), fault_heap->host_address_offset(),
+            static_cast<uint32_t>(fault_heap->heap_type())));
+        if (fault_heap->heap_type() == HeapType::kGuestPhysical) {
+          crash_msg.append(fmt::format(
+              "  physical=0x{:08X}\n",
+              memory_->GetPhysicalAddress(fault_guest_address)));
+        }
+        HeapAllocationInfo allocation_info = {};
+        if (fault_heap->QueryRegionInfo(fault_guest_address,
+                                        &allocation_info)) {
+          crash_msg.append(fmt::format(
+              "  allocation_base=0x{:08X} allocation_size=0x{:08X} "
+              "region_size=0x{:08X} state=0x{:X} "
+              "allocation_protect=0x{:X} protect=0x{:X}\n",
+              allocation_info.allocation_base,
+              allocation_info.allocation_size, allocation_info.region_size,
+              allocation_info.state, allocation_info.allocation_protect,
+              allocation_info.protect));
+        } else {
+          crash_msg.append("  allocation metadata unavailable\n");
+        }
+      } else {
+        crash_msg.append("  no guest heap owns the fault address\n");
+      }
+    }
+#endif
   } else if (ex->code() == Exception::Code::kIllegalInstruction) {
     crash_msg.append("Illegal Instruction\n");
   }
