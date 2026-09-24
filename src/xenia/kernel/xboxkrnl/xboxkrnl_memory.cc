@@ -534,8 +534,11 @@ uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
 #if XE_PLATFORM_IOS
     ++ios_failure_count;
     auto* parent_heap = kernel_memory()->GetPhysicalHeap();
-    const uint32_t largest_free_pages =
-        parent_heap->largest_free_block_page_count();
+    const auto largest_free_block = parent_heap->largest_free_block();
+    const uint32_t largest_free_start_page = largest_free_block.first;
+    const uint32_t largest_free_pages = largest_free_block.second;
+    const uint64_t largest_free_start =
+        uint64_t(largest_free_start_page) * parent_heap->page_size();
     const uint64_t largest_free_bytes =
         uint64_t(largest_free_pages) * parent_heap->page_size();
     constexpr uint64_t kNearLargestWindow = 4ull * 1024 * 1024;
@@ -561,13 +564,13 @@ uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
           "raw_size={:08X} size={:08X} protect={:08X} page={:08X} "
           "range={:08X}-{:08X} translated_range={:08X}-{:08X} "
           "alignment={:08X} heap={:08X}-{:08X} parent_free={}/{}p "
-          "largest_contiguous={}p/0x{:X}b",
+          "largest_contiguous=0x{:X}+{}p/0x{:X}b",
           ios_failure_count, guest_thread_id, guest_lr, flags, region_size,
           adjusted_size, protect_bits, page_size, min_addr_range,
           max_addr_range, heap_min_addr, heap_max_addr, adjusted_alignment,
           heap_base, heap_base + heap_size - 1,
           parent_heap->unreserved_page_count(), parent_heap->total_page_count(),
-          largest_free_pages, largest_free_bytes);
+          largest_free_start, largest_free_pages, largest_free_bytes);
     }
 #else
     XELOGW("MmAllocatePhysicalMemoryEx: Allocation failed: {:08X} Size: {:08X}",
