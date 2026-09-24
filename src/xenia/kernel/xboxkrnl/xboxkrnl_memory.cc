@@ -11,9 +11,9 @@
 #include "xenia/base/logging.h"
 #include "xenia/base/platform.h"
 #include "xenia/kernel/kernel_state.h"
-#include "xenia/kernel/xthread.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
+#include "xenia/kernel/xthread.h"
 #include "xenia/xbox.h"
 
 DEFINE_bool(
@@ -542,9 +542,9 @@ uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
     const bool near_largest_free_block =
         uint64_t(adjusted_size) + kNearLargestWindow >= largest_free_bytes &&
         uint64_t(adjusted_size) <= largest_free_bytes + kNearLargestWindow;
-    const bool sampled_failure =
-        ios_failure_count <= 8 || (ios_failure_count % 1024) == 0 ||
-        near_largest_free_block;
+    const bool sampled_failure = ios_failure_count <= 8 ||
+                                 (ios_failure_count % 1024) == 0 ||
+                                 near_largest_free_block;
     if (sampled_failure) {
       uint32_t guest_lr = 0;
       uint32_t guest_thread_id = 0;
@@ -566,9 +566,8 @@ uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
           adjusted_size, protect_bits, page_size, min_addr_range,
           max_addr_range, heap_min_addr, heap_max_addr, adjusted_alignment,
           heap_base, heap_base + heap_size - 1,
-          parent_heap->unreserved_page_count(),
-          parent_heap->total_page_count(), largest_free_pages,
-          largest_free_bytes);
+          parent_heap->unreserved_page_count(), parent_heap->total_page_count(),
+          largest_free_pages, largest_free_bytes);
     }
 #else
     XELOGW("MmAllocatePhysicalMemoryEx: Allocation failed: {:08X} Size: {:08X}",
