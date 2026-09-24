@@ -1843,9 +1843,9 @@ bool Emulator::ExceptionCallback(Exception* ex) {
             fault_heap->page_size(), fault_heap->host_address_offset(),
             static_cast<uint32_t>(fault_heap->heap_type())));
         if (fault_heap->heap_type() == HeapType::kGuestPhysical) {
-          crash_msg.append(fmt::format(
-              "  physical=0x{:08X}\n",
-              memory_->GetPhysicalAddress(fault_guest_address)));
+          crash_msg.append(
+              fmt::format("  physical=0x{:08X}\n",
+                          memory_->GetPhysicalAddress(fault_guest_address)));
         }
         HeapAllocationInfo allocation_info = {};
         if (fault_heap->QueryRegionInfo(fault_guest_address,
@@ -1854,10 +1854,9 @@ bool Emulator::ExceptionCallback(Exception* ex) {
               "  allocation_base=0x{:08X} allocation_size=0x{:08X} "
               "region_size=0x{:08X} state=0x{:X} "
               "allocation_protect=0x{:X} protect=0x{:X}\n",
-              allocation_info.allocation_base,
-              allocation_info.allocation_size, allocation_info.region_size,
-              allocation_info.state, allocation_info.allocation_protect,
-              allocation_info.protect));
+              allocation_info.allocation_base, allocation_info.allocation_size,
+              allocation_info.region_size, allocation_info.state,
+              allocation_info.allocation_protect, allocation_info.protect));
         } else {
           crash_msg.append("  allocation metadata unavailable\n");
         }
