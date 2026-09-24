@@ -132,6 +132,12 @@ class BaseHeap {
     return total_page_count() - unreserved_page_count();
   }
 
+  // Largest currently unreserved contiguous run, in this heap's pages.
+  // Intended for allocator diagnostics; free_blocks_ is maintained alongside
+  // the page table, so this is cheaper and more useful than total free pages
+  // when a large allocation fails.
+  uint32_t largest_free_block_page_count();
+
   // Type of specified heap
   HeapType heap_type() const { return heap_type_; }
 
