@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "a12-performance-build-validation"
+      - "diag-ios14-postlaunch-physical-memory"
   workflow_dispatch:
 
 concurrency:
