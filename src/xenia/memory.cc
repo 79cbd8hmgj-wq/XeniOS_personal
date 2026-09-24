@@ -1038,6 +1038,15 @@ void BaseHeap::RebuildFreeBlocks() {
   }
 }
 
+uint32_t BaseHeap::largest_free_block_page_count() {
+  auto global_lock = global_critical_region_.Acquire();
+  uint32_t largest = 0;
+  for (const auto& free_block : free_blocks_) {
+    largest = std::max(largest, free_block.second);
+  }
+  return largest;
+}
+
 void BaseHeap::RemoveFreeBlock(uint32_t start_page, uint32_t page_count) {
   if (free_blocks_.empty()) {
     return;
@@ -1349,7 +1358,9 @@ bool BaseHeap::AllocRange(uint32_t low_address, uint32_t high_address,
 
   if (start_page_number == UINT_MAX || end_page_number == UINT_MAX) {
     // Out of memory.
+#if !XE_PLATFORM_IOS
     XELOGE("BaseHeap::Alloc failed to find contiguous range");
+#endif
     // assert_always("Heap exhausted!");
     return false;
   }
@@ -1965,11 +1976,13 @@ bool PhysicalHeap::AllocRange(uint32_t low_address, uint32_t high_address,
   if (!parent_heap_->AllocRange(parent_low_address, parent_high_address, size,
                                 alignment, allocation_type, protect, top_down,
                                 &parent_address)) {
+#if !XE_PLATFORM_IOS
     XELOGE(
         "PhysicalHeap::AllocRange unable to alloc physical memory in parent "
         "heap (requested {} bytes, parent free {}/{} pages)",
         size, parent_heap_->unreserved_page_count(),
         parent_heap_->total_page_count());
+#endif
     return false;
   }
   // Given the address we've reserved in the parent heap, pin that here.
