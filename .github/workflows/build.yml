@@ -22,6 +22,9 @@ jobs:
   build-linux:
     name: Build Linux
     needs: lint
+    if: |
+      github.ref != 'refs/heads/a12-performance-build-validation' &&
+      github.ref != 'refs/heads/diag-ios14-postlaunch-physical-memory'
     # Build on the oldest supported LTS so the AppImage's glibc floor (taken from
     # the build host) stays low enough for Ubuntu 22.04 / Debian 12 users.
     runs-on: ubuntu-22.04
@@ -315,6 +318,9 @@ jobs:
   build-windows:
     name: Build Windows
     needs: lint
+    if: |
+      github.ref != 'refs/heads/a12-performance-build-validation' &&
+      github.ref != 'refs/heads/diag-ios14-postlaunch-physical-memory'
     runs-on: windows-2025
     env:
       POWERSHELL_TELEMETRY_OPTOUT: 1
