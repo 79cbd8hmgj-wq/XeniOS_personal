@@ -58,9 +58,8 @@ void InitFeatureFlags() {
       if (atomic_result == 0 && atomic_supported != 0) {
         feature_flags_ |= kA64EmitLSE;
       }
-      XELOGW(
-          "iOS launch diag: A64 feature probe LSE result={} supported={}",
-          atomic_result, atomic_supported != 0);
+      XELOGW("iOS launch diag: A64 feature probe LSE result={} supported={}",
+             atomic_result, atomic_supported != 0);
     }
 #else
     Xbyak_aarch64::util::Cpu cpu_;
