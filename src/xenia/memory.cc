@@ -31,8 +31,13 @@
 // TODO(benvanik): move xbox.h out
 #include "xenia/xbox.h"
 
+#if XE_PLATFORM_IOS
+DEFINE_bool(protect_zero, false,
+            "Protect the zero page from reads and writes.", "Memory");
+#else
 DEFINE_bool(protect_zero, true, "Protect the zero page from reads and writes.",
             "Memory");
+#endif  // XE_PLATFORM_IOS
 DEFINE_bool(emit_inline_mmio_checks, false,
             "Emit inline MMIO range checks for all I32 loads/stores instead "
             "of relying on exception-based MMIO detection.",
