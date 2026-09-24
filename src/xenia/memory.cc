@@ -1038,11 +1038,13 @@ void BaseHeap::RebuildFreeBlocks() {
   }
 }
 
-uint32_t BaseHeap::largest_free_block_page_count() {
+std::pair<uint32_t, uint32_t> BaseHeap::largest_free_block() {
   auto global_lock = global_critical_region_.Acquire();
-  uint32_t largest = 0;
+  std::pair<uint32_t, uint32_t> largest = {0, 0};
   for (const auto& free_block : free_blocks_) {
-    largest = std::max(largest, free_block.second);
+    if (free_block.second > largest.second) {
+      largest = free_block;
+    }
   }
   return largest;
 }
