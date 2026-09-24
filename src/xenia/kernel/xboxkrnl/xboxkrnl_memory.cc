@@ -9,7 +9,9 @@
 
 #include "xenia/kernel/xboxkrnl/xboxkrnl_memory.h"
 #include "xenia/base/logging.h"
+#include "xenia/base/platform.h"
 #include "xenia/kernel/kernel_state.h"
+#include "xenia/kernel/xthread.h"
 #include "xenia/kernel/util/shim_utils.h"
 #include "xenia/kernel/xboxkrnl/xboxkrnl_private.h"
 #include "xenia/xbox.h"
@@ -519,14 +521,72 @@ uint32_t xeMmAllocatePhysicalMemoryEx(uint32_t flags, uint32_t region_size,
   heap_min_addr = heap_base + std::min(heap_min_addr, heap_size - 1);
   heap_max_addr = heap_base + std::min(heap_max_addr, heap_size - 1);
   uint32_t base_address;
+#if XE_PLATFORM_IOS
+  // Some titles probe physical-memory capacity by issuing thousands of
+  // progressively smaller allocations. Keep enough telemetry to reconstruct
+  // the search without flooding xenia.log with one line per 64 KiB step.
+  static thread_local uint64_t ios_failure_count = 0;
+#endif
   if (!heap->AllocRange(heap_min_addr, heap_max_addr, adjusted_size,
                         adjusted_alignment, allocation_type, protect, top_down,
                         &base_address)) {
     // Failed - assume no memory available.
+#if XE_PLATFORM_IOS
+    ++ios_failure_count;
+    auto* parent_heap = kernel_memory()->GetPhysicalHeap();
+    const uint32_t largest_free_pages =
+        parent_heap->largest_free_block_page_count();
+    const uint64_t largest_free_bytes =
+        uint64_t(largest_free_pages) * parent_heap->page_size();
+    constexpr uint64_t kNearLargestWindow = 4ull * 1024 * 1024;
+    const bool near_largest_free_block =
+        uint64_t(adjusted_size) + kNearLargestWindow >= largest_free_bytes &&
+        uint64_t(adjusted_size) <= largest_free_bytes + kNearLargestWindow;
+    const bool sampled_failure =
+        ios_failure_count <= 8 || (ios_failure_count % 1024) == 0 ||
+        near_largest_free_block;
+    if (sampled_failure) {
+      uint32_t guest_lr = 0;
+      uint32_t guest_thread_id = 0;
+      if (auto* current_thread = XThread::GetCurrentThread()) {
+        guest_thread_id = current_thread->thread_id();
+        if (current_thread->thread_state() &&
+            current_thread->thread_state()->context()) {
+          guest_lr = static_cast<uint32_t>(
+              current_thread->thread_state()->context()->lr);
+        }
+      }
+      XELOGW(
+          "iOS phys alloc diag #{}: FAIL tid={:08X} lr={:08X} flags={:08X} "
+          "raw_size={:08X} size={:08X} protect={:08X} page={:08X} "
+          "range={:08X}-{:08X} translated_range={:08X}-{:08X} "
+          "alignment={:08X} heap={:08X}-{:08X} parent_free={}/{}p "
+          "largest_contiguous={}p/0x{:X}b",
+          ios_failure_count, guest_thread_id, guest_lr, flags, region_size,
+          adjusted_size, protect_bits, page_size, min_addr_range,
+          max_addr_range, heap_min_addr, heap_max_addr, adjusted_alignment,
+          heap_base, heap_base + heap_size - 1,
+          parent_heap->unreserved_page_count(),
+          parent_heap->total_page_count(), largest_free_pages,
+          largest_free_bytes);
+    }
+#else
     XELOGW("MmAllocatePhysicalMemoryEx: Allocation failed: {:08X} Size: {:08X}",
            base_address, adjusted_size);
+#endif
     return 0;
   }
+#if XE_PLATFORM_IOS
+  if (ios_failure_count) {
+    XELOGW(
+        "iOS phys alloc diag: SUCCESS after {} failures address={:08X} "
+        "raw_size={:08X} size={:08X} page={:08X} range={:08X}-{:08X} "
+        "alignment={:08X}",
+        ios_failure_count, base_address, region_size, adjusted_size, page_size,
+        min_addr_range, max_addr_range, adjusted_alignment);
+    ios_failure_count = 0;
+  }
+#endif
   XELOGD("MmAllocatePhysicalMemoryEx = {:08X} Size: {:08X}", base_address,
          adjusted_size);
 
